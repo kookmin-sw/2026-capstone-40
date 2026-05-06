@@ -42,6 +42,20 @@ pub fn static_file(content_type: &str, bytes: Vec<u8>) -> HttpResponse {
     )
 }
 
+pub fn svg(bytes: Vec<u8>) -> HttpResponse {
+    let len = bytes.len();
+    Response::new(
+        StatusCode(200),
+        vec![
+            header("Content-Type", "image/svg+xml; charset=utf-8"),
+            header("Cache-Control", "no-cache, no-store"),
+        ],
+        Cursor::new(bytes),
+        Some(len),
+        None,
+    )
+}
+
 pub fn not_found() -> HttpResponse {
     html(404, "<h1>404 Not Found</h1>".to_string())
 }

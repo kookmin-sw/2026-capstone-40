@@ -1,14 +1,26 @@
 use askama::Template as _;
 use crate::config::Config;
+use crate::store::Db;
 use crate::frontend::{pages, response};
+use crate::store;
 
-pub fn handle(config: &Config) -> response::HttpResponse {
-    // TODO(Phase 1): query store for real data
+pub fn handle(config: &Config, db: &Db) -> response::HttpResponse {
+    let conn = match db.lock() {
+        Ok(c)  => c,
+        Err(_) => return response::html(500, "<pre>DB lock poisoned</pre>".into()),
+    };
+
+    let s     = store::stats(&conn);
+    let pl    = store::pipeline_status(&conn);
+    let sev   = store::severity_counts(&conn);
+    let alerts  = store::recent_alerts(&conn, 10);
+    let domains = store::recent_domains(&conn, 10);
+
     let stats = pages::DashboardStats {
-        total_domains: 0,
-        active_alerts: 0,
-        ips_captured:  0,
-        probes_run:    0,
+        total_domains: s.total_domains,
+        active_alerts: s.active_alerts,
+        ips_captured:  s.ips_captured,
+        probes_run:    s.probes_run,
     };
 
     let capture_source = match (&config.capture.interface, &config.capture.pcap_file) {
@@ -17,26 +29,52 @@ pub fn handle(config: &Config) -> response::HttpResponse {
         _                => None,
     };
 
-    let severity_counts = severity_breakdown(&[]);
     let pipeline = pages::PipelineStatus {
         capture_running: false, // Phase 4: wire Arc<AtomicBool> from capture thread
         capture_source,
-        queue_depth:     0,
-        total_skip:      0,
-        total_watch:     0,
-        total_probe:     0,
-        last_probe_ts:   None,
-        db_size_kb:      0,
+        queue_depth:     pl.queue_depth,
+        total_skip:      pl.total_skip,
+        total_watch:     pl.total_watch,
+        total_probe:     pl.total_probe,
+        last_probe_ts:   pl.last_probe_ts,
+        db_size_kb:      pl.db_size_kb,
     };
 
+    let severity_counts = severity_breakdown(&sev);
+
+    let recent_alerts: Vec<pages::AlertRow> = alerts
+        .into_iter()
+        .map(|a| pages::AlertRow {
+            id:           a.id,
+            severity:     a.severity,
+            alert_type:   a.alert_type,
+            domain:       a.domain,
+            detail:       a.detail,
+            ts:           a.ts,
+            acknowledged: a.acknowledged,
+        })
+        .collect();
+
+    let recent_domains: Vec<pages::DomainRow> = domains
+        .into_iter()
+        .map(|d| pages::DomainRow {
+            domain:      d.domain,
+            risk_score:  d.risk_score,
+            decision:    d.decision,
+            ips:         d.ips,
+            last_seen:   d.last_seen,
+            alert_count: d.alert_count,
+        })
+        .collect();
+
     let body = pages::DashboardPage {
-        page_title:     "Dashboard",
-        active:         "dashboard",
+        page_title: "Dashboard",
+        active:     "dashboard",
         stats,
         severity_counts,
         pipeline,
-        recent_alerts:  vec![],
-        recent_domains: vec![],
+        recent_alerts,
+        recent_domains,
     }
     .render()
     .unwrap_or_else(|e| format!("<pre>Template error: {e}</pre>"));
@@ -44,27 +82,18 @@ pub fn handle(config: &Config) -> response::HttpResponse {
     response::html(200, body)
 }
 
-/// Build per-severity counts with relative percentages.
-/// `rows` will come from store::alert_severity_counts() in Phase 1.
 fn severity_breakdown(rows: &[(u8, u64)]) -> Vec<pages::SeverityCount> {
     const LABELS: [&str; 5] = ["info", "low", "medium", "high", "critical"];
-
-    let mut counts: Vec<(u8, u64)> = (1u8..=5)
+    let max = rows.iter().map(|(_, n)| *n).max().unwrap_or(1).max(1);
+    (1u8..=5)
         .map(|sev| {
-            let n = rows.iter().find(|(s, _)| *s == sev).map(|(_, n)| *n).unwrap_or(0);
-            (sev, n)
-        })
-        .collect();
-
-    let max = counts.iter().map(|(_, n)| *n).max().unwrap_or(1).max(1);
-
-    counts
-        .into_iter()
-        .map(|(sev, count)| pages::SeverityCount {
-            severity: sev,
-            label:    LABELS[(sev - 1) as usize],
-            count,
-            pct:      count * 100 / max,
+            let count = rows.iter().find(|(s, _)| *s == sev).map(|(_, n)| *n).unwrap_or(0);
+            pages::SeverityCount {
+                severity: sev,
+                label:    LABELS[(sev - 1) as usize],
+                count,
+                pct:      count * 100 / max,
+            }
         })
         .collect()
 }

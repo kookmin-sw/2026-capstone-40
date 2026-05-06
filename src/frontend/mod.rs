@@ -1,18 +1,23 @@
+pub mod chart;
 mod handlers;
 mod pages;
 mod response;
 mod router;
 
-use std::net::ToSocketAddrs;
+use std::sync::Arc;
+use crate::config::Config;
+use crate::store::Db;
 
-/// HTTP server. Owns its bind address; all shared state goes through handlers → store (Phase 1).
+/// HTTP server. Owns its bind address; all shared state goes through handlers → store.
 pub struct Server {
-    bind: String,
+    bind:   String,
+    config: Arc<Config>,
+    db:     Db,
 }
 
 impl Server {
-    pub fn new(bind: impl Into<String>) -> Self {
-        Self { bind: bind.into() }
+    pub fn new(bind: impl Into<String>, config: Arc<Config>, db: Db) -> Self {
+        Self { bind: bind.into(), config, db }
     }
 
     /// Blocking. Spawns one thread per request (tiny_http default).
@@ -24,7 +29,7 @@ impl Server {
 
         for request in server.incoming_requests() {
             let route = router::Route::parse(request.method(), request.url());
-            let resp  = handlers::dispatch(route);
+            let resp  = handlers::dispatch(route, &self.config, &self.db);
             request.respond(resp)?;
         }
 
