@@ -163,6 +163,8 @@ pub struct SeverityCount {
 
 pub struct PipelineStatus {
     pub capture_running: bool,
+    /// Configured capture source ("interface enp7s0", "pcap capture.pcap", or None).
+    pub capture_source:  Option<String>,
     pub queue_depth:     u64,
     pub total_skip:      u64,
     pub total_watch:     u64,
