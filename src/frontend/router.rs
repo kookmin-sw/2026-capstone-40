@@ -8,6 +8,7 @@ pub enum Route {
     Domain(String),
     Probe(Option<ProbeQuery>),
     AckAlert(i64),
+    Chart(String),
     StaticFile(String),
     NotFound,
 }
@@ -46,6 +47,9 @@ impl Route {
 
             (tiny_http::Method::Post, ["alerts", id, "ack"]) =>
                 id.parse::<i64>().map(Route::AckAlert).unwrap_or(Route::NotFound),
+
+            (tiny_http::Method::Get, ["chart", name]) =>
+                Route::Chart((*name).to_string()),
 
             (tiny_http::Method::Get, [file]) if is_static(file) =>
                 Route::StaticFile((*file).to_string()),
