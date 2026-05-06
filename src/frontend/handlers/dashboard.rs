@@ -1,7 +1,8 @@
 use askama::Template as _;
+use crate::config::Config;
 use crate::frontend::{pages, response};
 
-pub fn handle() -> response::HttpResponse {
+pub fn handle(config: &Config) -> response::HttpResponse {
     // TODO(Phase 1): query store for real data
     let stats = pages::DashboardStats {
         total_domains: 0,
@@ -10,9 +11,16 @@ pub fn handle() -> response::HttpResponse {
         probes_run:    0,
     };
 
+    let capture_source = match (&config.capture.interface, &config.capture.pcap_file) {
+        (Some(iface), _) => Some(format!("interface {iface}")),
+        (_, Some(pcap))  => Some(format!("pcap {pcap}")),
+        _                => None,
+    };
+
     let severity_counts = severity_breakdown(&[]);
     let pipeline = pages::PipelineStatus {
-        capture_running: false,
+        capture_running: false, // Phase 4: wire Arc<AtomicBool> from capture thread
+        capture_source,
         queue_depth:     0,
         total_skip:      0,
         total_watch:     0,
