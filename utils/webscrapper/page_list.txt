@@ -1,0 +1,4 @@
+# Page list — one URL per line. Lines starting with # are ignored.
+# Example entries:
+# https://example.com
+# https://news.ycombinator.com
