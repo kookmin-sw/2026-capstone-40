@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block head %}
+  <meta http-equiv="refresh" content="15" />
+{% endblock %}
+
+{% block content %}
+
+{# ---- traffic chart panel ---- #}
+<div class="panel chart-panel" style="margin-bottom:1rem">
+  <div class="panel-header">
+    <span class="panel-title">Traffic</span>
+    <span class="chart-legend">
+      <span class="legend-dot" style="background:#3b82f6"></span>IPs
+      <span class="legend-dot" style="background:#ef4444"></span>Alerts
+      <span class="legend-dot" style="background:#10b981"></span>Domains
+    </span>
+    <span class="spacer"></span>
+    <span class="muted" style="font-size:0.75rem">per minute · last hour</span>
+  </div>
+  <div class="chart-body">
+    <img src="/chart/traffic" alt="traffic" class="chart-img" />
+  </div>
+</div>
+
+{# ---- stat cards ---- #}
+<div class="stats-grid" style="margin-bottom:1rem">
+
+  <div class="panel stat-panel {% if stats.active_alerts > 0 %}stat-danger{% endif %}">
+    <div class="stat-label">Active Alerts</div>
+    <div class="stat-value {% if stats.active_alerts > 0 %}danger{% endif %}">
+      {{ stats.active_alerts }}
+    </div>
+    <img src="/chart/alerts" alt="" class="stat-spark" />
+  </div>
+
+  <div class="panel stat-panel">
+    <div class="stat-label">Tracked Domains</div>
+    <div class="stat-value">{{ stats.total_domains }}</div>
+    <img src="/chart/domains" alt="" class="stat-spark" />
+  </div>
+
+  <div class="panel stat-panel">
+    <div class="stat-label">IPs Captured</div>
+    <div class="stat-value">{{ stats.ips_captured }}</div>
+    <img src="/chart/ips" alt="" class="stat-spark" />
+  </div>
+
+  <div class="panel stat-panel">
+    <div class="stat-label">Probes Run</div>
+    <div class="stat-value">{{ stats.probes_run }}</div>
+    <img src="/chart/probes" alt="" class="stat-spark" />
+  </div>
+
+</div>
+
+{# ---- middle row ---- #}
+<div class="grid-3" style="margin-bottom:1rem">
+
+  {# alert severity breakdown #}
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">Alert Severity</span></div>
+    <div class="panel-body">
+      <div class="signal-list">
+        {% for s in severity_counts %}
+        <div class="signal-row">
+          <span class="badge sev-{{ s.severity }}" style="min-width:4.5rem;justify-content:center">
+            {{ s.label }}
+          </span>
+          <div class="signal-bar-wrap">
+            <div class="signal-bar sev-{{ s.severity }}-bar" style="width:{{ s.pct }}%"></div>
+          </div>
+          <span class="signal-pts">{{ s.count }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {# filter decision breakdown #}
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">Filter Decisions</span></div>
+    <div class="panel-body">
+      {% set total = pipeline.total_decisions() %}
+      {% if total == 0 %}
+        <p class="muted" style="font-size:0.85rem">No decisions yet.</p>
+      {% else %}
+        <div class="decision-bar">
+          <div class="decision-skip"  style="flex:{{ pipeline.total_skip }}"></div>
+          <div class="decision-watch" style="flex:{{ pipeline.total_watch }}"></div>
+          <div class="decision-probe" style="flex:{{ pipeline.total_probe }}"></div>
+        </div>
+        <div class="decision-legend">
+          <span class="decision-skip-dot">Skip</span><span class="muted">{{ pipeline.total_skip }}</span>
+          <span class="decision-watch-dot">Watch</span><span class="muted">{{ pipeline.total_watch }}</span>
+          <span class="decision-probe-dot">Probe</span><span class="muted">{{ pipeline.total_probe }}</span>
+        </div>
+      {% endif %}
+      <div class="pipeline-rows">
+        <div class="pipeline-row">
+          <span class="muted">Queue depth</span>
+          <strong>{{ pipeline.queue_depth }}</strong>
+        </div>
+        <div class="pipeline-row">
+          <span class="muted">DB size</span>
+          <strong>{{ pipeline.db_size_kb }} KB</strong>
+        </div>
+        <div class="pipeline-row">
+          <span class="muted">Last probe</span>
+          <strong>
+            {% if let Some(ts) = pipeline.last_probe_ts %}{{ ts|fmt_ts }}{% else %}—{% endif %}
+          </strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# capture status #}
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Capture</span>
+      <span class="status-chip {% if pipeline.capture_running %}chip-on{% else %}chip-off{% endif %}">
+        <span class="status-dot {% if pipeline.capture_running %}on{% else %}off{% endif %}"></span>
+        {% if pipeline.capture_running %}Running{% else %}Stopped{% endif %}
+      </span>
+    </div>
+    <div class="panel-body">
+      {% if pipeline.capture_running %}
+        <p class="muted" style="font-size:0.8rem">Live capture active on {{ pipeline.capture_source|default("unknown") }}.</p>
+      {% else %}
+        {% if let Some(src) = pipeline.capture_source %}
+          <p class="muted" style="font-size:0.8rem">Configured: <code>{{ src }}</code></p>
+          <p class="muted" style="font-size:0.8rem;margin-top:0.35rem">Capture thread running.</p>
+        {% else %}
+          <p class="muted" style="font-size:0.8rem">No source configured. Add to <code>capstone.toml</code>:</p>
+          <pre class="notes">[capture]
+interface = "eth0"</pre>
+        {% endif %}
+      {% endif %}
+      <div class="pipeline-rows" style="margin-top:0.75rem">
+        <div class="pipeline-row">
+          <span class="muted">IPs seen</span>
+          <strong>{{ stats.ips_captured }}</strong>
+        </div>
+        <div class="pipeline-row">
+          <span class="muted">Domains resolved</span>
+          <strong>{{ stats.total_domains }}</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{# ---- recent alerts ---- #}
+<div class="panel" style="padding:0;overflow:hidden;margin-bottom:1rem">
+  <div class="panel-header" style="padding:0.75rem 1rem">
+    <span class="panel-title">Recent Alerts</span>
+    <span class="spacer"></span>
+    <a href="/alerts" class="btn-ghost">View all →</a>
+  </div>
+  {% if recent_alerts.is_empty() %}
+    <p class="muted" style="padding:1rem">No alerts yet.</p>
+  {% else %}
+    <table>
+      <thead><tr>
+        <th>Severity</th><th>Type</th><th>Domain</th><th>Detail</th><th>Time</th>
+      </tr></thead>
+      <tbody>
+        {% for a in recent_alerts %}
+        <tr>
+          <td><span class="badge sev-{{ a.severity }}">{{ a.severity_label() }}</span></td>
+          <td><code>{{ a.alert_type }}</code></td>
+          <td><a href="/domains/{{ a.domain|urlencode }}">{{ a.domain }}</a></td>
+          <td class="muted">{{ a.detail|default("") }}</td>
+          <td class="muted mono">{{ a.ts|fmt_ts }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+
+{# ---- recent domains ---- #}
+<div class="panel" style="padding:0;overflow:hidden">
+  <div class="panel-header" style="padding:0.75rem 1rem">
+    <span class="panel-title">Recent Domains</span>
+    <span class="spacer"></span>
+    <a href="/domains" class="btn-ghost">View all →</a>
+  </div>
+  {% if recent_domains.is_empty() %}
+    <p class="muted" style="padding:1rem">No domains tracked yet.</p>
+  {% else %}
+    <table>
+      <thead><tr>
+        <th>Domain</th><th>Risk</th><th>IPs</th><th>Last Seen</th><th>Alerts</th>
+      </tr></thead>
+      <tbody>
+        {% for d in recent_domains %}
+        <tr>
+          <td><a href="/domains/{{ d.domain|urlencode }}">{{ d.domain }}</a></td>
+          <td>
+            {% if let Some(score) = d.risk_score %}
+              <span class="risk-pill {{ d.risk_class() }}">{{ score }}</span>
+            {% else %}<span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td class="muted mono" style="font-size:0.8rem">
+            {% if d.ips.is_empty() %}—{% else %}{{ d.ips.join(", ") }}{% endif %}
+          </td>
+          <td class="muted mono">{{ d.last_seen|fmt_ts }}</td>
+          <td>
+            {% if d.alert_count > 0 %}<span class="badge sev-4">{{ d.alert_count }}</span>
+            {% else %}<span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+
+{% endblock %}

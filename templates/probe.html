@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="view-header"><h2>Manual Probe</h2></div>
+
+<div class="card form">
+  <form method="GET" action="/probe">
+    <div class="field-row">
+      <label for="ip-input">IP Address</label>
+      <input id="ip-input" name="ip" type="text"
+             placeholder="93.184.216.34"
+             value="{{ query_ip }}"
+             required />
+    </div>
+    <div class="field-row">
+      <label>Sources</label>
+      <label class="checkbox">
+        <input type="checkbox" name="sources" value="ptr"
+               {% if sources_ptr %}checked{% endif %}> PTR
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="sources" value="hackertarget"
+               {% if sources_ht %}checked{% endif %}> HackerTarget
+      </label>
+    </div>
+    <div class="field-row">
+      <label class="checkbox">
+        <input type="checkbox" name="verify"
+               {% if verify %}checked{% endif %}> Verify via DoH
+      </label>
+    </div>
+    <div class="field-row">
+      <label></label>
+      <button type="submit" class="btn">Lookup</button>
+    </div>
+  </form>
+</div>
+
+{% if let Some(result) = probe_result %}
+<div class="card" style="margin-top:1rem">
+  <div class="view-header" style="margin-bottom:0.75rem">
+    <h2>{{ result.ip }}</h2>
+    <span class="sub">
+      {{ result.count }} domain{% if result.count != 1 %}s{% endif %}
+      {% if result.verified %} · verified{% endif %}
+    </span>
+  </div>
+
+  {% if result.domains.is_empty() %}
+    <p class="muted">No domains found.</p>
+  {% else %}
+    <table>
+      <thead><tr><th>Domain</th><th>Sources</th></tr></thead>
+      <tbody>
+        {% for d in result.domains %}
+        <tr>
+          <td><a href="/domains/{{ d.domain|urlencode }}">{{ d.domain }}</a></td>
+          <td class="muted">{{ d.sources.join(", ") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  {% if !result.notes.is_empty() %}
+    <pre class="notes">{% for n in result.notes %}# {{ n }}
+{% endfor %}</pre>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

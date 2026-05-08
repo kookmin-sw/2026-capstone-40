@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block head %}
+  <meta http-equiv="refresh" content="30" />
+{% endblock %}
+
+{% block content %}
+<div class="view-header">
+  <h2>Alerts</h2>
+  <span class="sub">{{ alerts.len() }} alert{% if alerts.len() != 1 %}s{% endif %}</span>
+  <span class="spacer"></span>
+  <div class="filter-bar">
+    <a href="/alerts"          class="btn-ghost {% if !show_acked %}active{% endif %}">Unacked</a>
+    <a href="/alerts?ack=show" class="btn-ghost {% if show_acked  %}active{% endif %}">All</a>
+  </div>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden">
+  {% if alerts.is_empty() %}
+    <p class="muted" style="padding:1rem">No alerts.</p>
+  {% else %}
+    <table>
+      <thead><tr>
+        <th>Severity</th>
+        <th>Type</th>
+        <th>Domain</th>
+        <th>Detail</th>
+        <th>Time</th>
+        <th></th>
+      </tr></thead>
+      <tbody>
+        {% for a in alerts %}
+        <tr>
+          <td><span class="badge sev-{{ a.severity }}">{{ a.severity_label() }}</span></td>
+          <td><code>{{ a.alert_type }}</code></td>
+          <td><a href="/domains/{{ a.domain|urlencode }}">{{ a.domain }}</a></td>
+          <td class="muted">{{ a.detail|default("") }}</td>
+          <td class="muted mono">{{ a.ts|fmt_ts }}</td>
+          <td>
+            {% if a.acknowledged %}
+              <span class="muted" style="font-size:0.75rem">acked</span>
+            {% else %}
+              <form method="POST" action="/alerts/{{ a.id }}/ack" style="margin:0">
+                <button type="submit" class="btn-ghost">Ack</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+{% endblock %}

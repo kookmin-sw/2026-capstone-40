@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="view-header">
+  <h2>Domains</h2>
+  <span class="sub">{{ domains.len() }} tracked</span>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden">
+  {% if domains.is_empty() %}
+    <p class="muted" style="padding:1rem">No domains tracked yet.</p>
+  {% else %}
+    <table>
+      <thead><tr>
+        <th>Domain</th>
+        <th>Risk Score</th>
+        <th>Decision</th>
+        <th>IPs</th>
+        <th>Last Seen</th>
+        <th>Alerts</th>
+      </tr></thead>
+      <tbody>
+        {% for d in domains %}
+        <tr>
+          <td><a href="/domains/{{ d.domain|urlencode }}">{{ d.domain }}</a></td>
+          <td>
+            {% if let Some(score) = d.risk_score %}
+              <span class="risk-pill {{ d.risk_class() }}">{{ score }}</span>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td><code class="muted">{{ d.decision|default("—") }}</code></td>
+          <td class="muted mono" style="font-size:0.8rem">
+            {% if d.ips.is_empty() %}—{% else %}{{ d.ips.join(", ") }}{% endif %}
+          </td>
+          <td class="muted mono">{{ d.last_seen|fmt_ts }}</td>
+          <td>
+            {% if d.alert_count > 0 %}
+              <span class="badge sev-4">{{ d.alert_count }}</span>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+{% endblock %}
