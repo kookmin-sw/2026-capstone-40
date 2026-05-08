@@ -182,10 +182,62 @@ pre code {
   .site-header {
     position: static;
     display: block;
+    padding: 1rem;
+  }
+
+  .brand {
+    font-size: 1rem;
+  }
+
+  .eyebrow {
+    font-size: 0.7rem;
   }
 
   nav {
     justify-content: flex-start;
-    margin-top: 1rem;
+    margin-top: 0.75rem;
+    gap: 0.3rem;
+  }
+
+  nav a {
+    font-size: 0.85rem;
+    padding: 0.3rem 0.5rem;
+  }
+
+  h1 {
+    font-size: clamp(1.6rem, 7vw, 2rem);
+    line-height: 1.05;
+    max-width: none;
+  }
+
+  h2 {
+    font-size: 1.25rem;
+    margin-top: 2rem;
+  }
+
+  h3 {
+    font-size: 1rem;
+  }
+
+  p:first-of-type {
+    font-size: 1rem;
+  }
+
+  p, li, th, td {
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+
+  th, td {
+    padding: 0.55rem 0.6rem;
+    font-size: 0.88rem;
+  }
+
+  .site-footer {
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.75rem;
+    margin-top: 1.25rem;
   }
 }
