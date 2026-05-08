@@ -1,2 +1,6 @@
 /target
 **/*.DS_Store
+**/*.venv
+**/*__pycache__
+utils/webscrapper/scraped
+utils/html_similarity/output
