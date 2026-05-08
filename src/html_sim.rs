@@ -1,15 +1,21 @@
 //! HTML content fingerprinting for cross-domain similarity detection.
 //!
-//! Computes a 64-bit SimHash over visible text trigrams (FNV-1a), extracts title
-//! and first <h1>, and classifies pairs by Hamming distance + Levenshtein ratio.
+//! Signals (mirrors utils/html_similarity Python evaluation):
+//!   - SimHash on visible text trigrams (FNV-1a) — near-duplicate text detection
+//!   - CSS class token Jaccard — template/kit sharing even when text differs
+//!   - Title + h1 Levenshtein ratio — brand/heading corroboration
+
+use std::collections::HashSet;
 
 // ── public types ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Default)]
 pub struct PageFingerprint {
-    pub simhash: i64,
-    pub title:   Option<String>,
-    pub h1:      Option<String>,
+    pub simhash:    i64,
+    pub title:      Option<String>,
+    pub h1:         Option<String>,
+    /// Unique normalised CSS class tokens extracted from all class="..." attributes.
+    pub css_classes: HashSet<String>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -30,10 +36,20 @@ pub enum Similarity {
 pub fn fingerprint(html: &str) -> PageFingerprint {
     let text = visible_text(html);
     PageFingerprint {
-        simhash: simhash_text(&text),
-        title:   extract_tag_text(html, "title"),
-        h1:      extract_tag_text(html, "h1"),
+        simhash:     simhash_text(&text),
+        title:       extract_tag_text(html, "title"),
+        h1:          extract_tag_text(html, "h1"),
+        css_classes: extract_css_classes(html),
     }
+}
+
+/// Jaccard similarity of CSS class token sets: |A ∩ B| / |A ∪ B|.
+pub fn css_jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f32 {
+    if a.is_empty() && b.is_empty() { return 1.0; }
+    if a.is_empty() || b.is_empty() { return 0.0; }
+    let inter = a.intersection(b).count();
+    let union = a.union(b).count();
+    inter as f32 / union as f32
 }
 
 pub fn hamming(a: i64, b: i64) -> u32 {
@@ -67,7 +83,8 @@ pub fn classify(a: &PageFingerprint, b: &PageFingerprint) -> Similarity {
                 (Some(ha), Some(hb)) => title_similarity(ha, hb),
                 _ => 0.0,
             };
-            if title_sim >= 0.80 || h1_sim >= 0.80 {
+            let css_sim = css_jaccard(&a.css_classes, &b.css_classes);
+            if title_sim >= 0.80 || h1_sim >= 0.80 || css_sim >= 0.70 {
                 Similarity::Corroborated
             } else {
                 Similarity::Distinct
@@ -208,6 +225,50 @@ fn strip_tags(s: &str) -> String {
     out
 }
 
+// ── CSS class extraction ──────────────────────────────────────────────────────
+
+/// Extract all unique normalised CSS class tokens from class="..." attributes.
+/// Mirrors the Python shape_content method's "cls:" token pool.
+fn extract_css_classes(html: &str) -> HashSet<String> {
+    let mut classes = HashSet::new();
+    let bytes = html.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        // scan for class= attribute
+        if i + 6 < bytes.len() {
+            let chunk: Vec<u8> = bytes[i..i + 6]
+                .iter()
+                .map(|b| b.to_ascii_lowercase())
+                .collect();
+            if chunk == b"class=" {
+                i += 6;
+                // skip optional quote
+                let quote = if i < bytes.len() && (bytes[i] == b'"' || bytes[i] == b'\'') {
+                    let q = bytes[i];
+                    i += 1;
+                    q
+                } else {
+                    b' '
+                };
+                let end_char = if quote == b'\'' { b'\'' } else { b'"' };
+                let start = i;
+                while i < bytes.len() && bytes[i] != end_char && bytes[i] != b'>' {
+                    i += 1;
+                }
+                let value = std::str::from_utf8(&bytes[start..i]).unwrap_or("");
+                for token in value.split_ascii_whitespace() {
+                    if !token.is_empty() {
+                        classes.insert(token.to_ascii_lowercase());
+                    }
+                }
+                continue;
+            }
+        }
+        i += 1;
+    }
+    classes
+}
+
 // ── Levenshtein distance ──────────────────────────────────────────────────────
 
 fn levenshtein(a: &str, b: &str) -> usize {
@@ -289,5 +350,29 @@ mod tests {
     fn classify_identical() {
         let fp = fingerprint("<p>same content</p>");
         assert_eq!(classify(&fp, &fp), Similarity::Identical);
+    }
+
+    #[test]
+    fn css_classes_extracted() {
+        let html = r#"<div class="navbar container-fluid"><p class="text-primary btn">hi</p></div>"#;
+        let fp = fingerprint(html);
+        assert!(fp.css_classes.contains("navbar"));
+        assert!(fp.css_classes.contains("container-fluid"));
+        assert!(fp.css_classes.contains("text-primary"));
+        assert!(fp.css_classes.contains("btn"));
+    }
+
+    #[test]
+    fn css_jaccard_same_template() {
+        let a = fingerprint(r#"<div class="navbar hero footer"><p class="btn primary">A</p></div>"#);
+        let b = fingerprint(r#"<div class="navbar hero footer"><p class="btn primary">B</p></div>"#);
+        assert!(css_jaccard(&a.css_classes, &b.css_classes) >= 0.90);
+    }
+
+    #[test]
+    fn css_jaccard_different_templates() {
+        let a = fingerprint(r#"<div class="sidebar-menu dark-theme rounded">X</div>"#);
+        let b = fingerprint(r#"<table class="data-grid striped responsive">Y</table>"#);
+        assert!(css_jaccard(&a.css_classes, &b.css_classes) < 0.20);
     }
 }
