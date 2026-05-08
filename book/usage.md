@@ -64,3 +64,37 @@ cargo run -- serve
 | `/domains` | 도메인 목록 |
 | `/domains/<domain>` | 도메인 상세 및 이력 |
 | `/probe` | 역방향 IP 조회 도구 |
+
+## API 사용
+
+`serve` 명령은 HTML 프론트엔드와 JSON API를 동일한 포트에서 제공합니다. 외부 스크립트나 도구에서 직접 데이터를 가져올 수 있습니다.
+
+기본 base URL:
+
+```text
+http://localhost:8080/api
+```
+
+예시 요청:
+
+```bash
+# 도메인 목록 조회
+curl http://localhost:8080/api/domains
+
+# 특정 도메인 상세 조회
+curl http://localhost:8080/api/domains/example.com
+
+# 활성 알림 조회
+curl http://localhost:8080/api/alerts
+
+# 알림 확인 처리
+curl -X POST http://localhost:8080/api/alerts/<id>/ack
+```
+
+| 엔드포인트 | 메서드 | 동작 |
+| --- | --- | --- |
+| `/api/domains` | GET | 도메인 목록 (위험도 점수, 결정 포함) |
+| `/api/domains/<domain>` | GET | 도메인 상세, IP 이력, 알림, 신호 |
+| `/api/alerts` | GET | 활성 알림 목록 |
+| `/api/alerts/<id>/ack` | POST | 알림 확인 처리 |
+| `/api/probe` | POST | 역방향 IP 조회 트리거 |
