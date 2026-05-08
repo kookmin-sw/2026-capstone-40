@@ -8,7 +8,12 @@ pub fn html(status: u16, body: String) -> HttpResponse {
     let len = bytes.len();
     Response::new(
         StatusCode(status),
-        vec![header("Content-Type", "text/html; charset=utf-8")],
+        vec![
+            header("Content-Type",           "text/html; charset=utf-8"),
+            header("X-Content-Type-Options", "nosniff"),
+            header("X-Frame-Options",        "DENY"),
+            header("Referrer-Policy",        "same-origin"),
+        ],
         Cursor::new(bytes),
         Some(len),
         None,

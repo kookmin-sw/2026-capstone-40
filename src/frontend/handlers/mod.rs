@@ -18,7 +18,7 @@ pub fn dispatch(route: Route, config: &Config, db: &Db) -> HttpResponse {
         Route::Alerts { show_acked }  => alerts::handle(show_acked, db),
         Route::Domains                => domains::handle(db),
         Route::Domain(ref d)          => domain::handle(d, db),
-        Route::Probe(query)           => probe::handle(query),
+        Route::Probe(query)           => probe::handle(query, config, db),
         Route::AckAlert(id)           => handle_ack(id, db),
         Route::StaticFile(ref name)   => serve_static(name),
         Route::NotFound               => response::not_found(),

@@ -82,20 +82,21 @@ fn parse_probe_query(query: &str) -> Option<ProbeQuery> {
 }
 
 pub fn url_decode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.bytes().peekable();
-    while let Some(b) = chars.next() {
+    let mut bytes: Vec<u8> = Vec::with_capacity(s.len());
+    let mut iter = s.bytes();
+    while let Some(b) = iter.next() {
         match b {
             b'%' => {
-                let h1 = chars.next().unwrap_or(b'0');
-                let h2 = chars.next().unwrap_or(b'0');
-                out.push((hex_val(h1) << 4 | hex_val(h2)) as char);
+                let h1 = iter.next().unwrap_or(b'0');
+                let h2 = iter.next().unwrap_or(b'0');
+                bytes.push(hex_val(h1) << 4 | hex_val(h2));
             }
-            b'+' => out.push(' '),
-            _    => out.push(b as char),
+            b'+' => bytes.push(b' '),
+            _    => bytes.push(b),
         }
     }
-    out
+    String::from_utf8(bytes)
+        .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
 
 fn hex_val(b: u8) -> u8 {

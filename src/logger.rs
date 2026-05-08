@@ -4,7 +4,7 @@
 //! Level:   reads `CAPSTONE_LOG` env var (trace/debug/info/warn/error), default = info.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use log::{Level, LevelFilter, Log, Metadata, Record};
+use log::{LevelFilter, Log, Metadata, Record};
 
 static MAX_LEVEL: AtomicUsize = AtomicUsize::new(LevelFilter::Info as usize);
 

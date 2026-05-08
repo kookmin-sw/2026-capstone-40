@@ -1,8 +1,11 @@
 use askama::Template as _;
+use crate::config::Config;
+use crate::store::{self, Db};
 use crate::frontend::{pages, response, router::ProbeQuery};
+use crate::ip_to_domain::{lookup, LookupConfig};
 
-pub fn handle(query: Option<ProbeQuery>) -> response::HttpResponse {
-    let probe_result = query.as_ref().map(run_probe);
+pub fn handle(query: Option<ProbeQuery>, config: &Config, db: &Db) -> response::HttpResponse {
+    let probe_result = query.as_ref().map(|q| run_probe(q, config, db));
 
     let (query_ip, sources_ptr, sources_ht, verify) = match &query {
         Some(q) => (
@@ -29,27 +32,46 @@ pub fn handle(query: Option<ProbeQuery>) -> response::HttpResponse {
     response::html(200, body)
 }
 
-fn run_probe(q: &ProbeQuery) -> pages::ProbeResult {
-    use crate::ip_to_domain::{lookup, LookupConfig};
+fn run_probe(q: &ProbeQuery, config: &Config, db: &Db) -> pages::ProbeResult {
+    let cache_path = config
+        .ip_to_domain
+        .cache_path
+        .clone()
+        .unwrap_or_else(|| "~/.cache/capstone/dns_cache.sqlite3".into());
 
-    let config = LookupConfig {
+    let cfg = LookupConfig {
         sources:    q.sources.clone(),
         verify:     q.verify,
-        timeout_s:  15.0,
-        cache_path: "~/.cache/reverse_ip_domains/cache.sqlite3".into(),
+        timeout_s:  config.probe.timeout_s,
+        cache_path,
     };
 
-    match lookup(&q.ip, &config) {
-        Ok(r) => pages::ProbeResult {
-            ip:       r.ip,
-            count:    r.count,
-            verified: r.verified,
-            domains:  r.domains.into_iter().map(|d| pages::ProbeEntry {
-                domain:  d.domain,
-                sources: d.sources,
-            }).collect(),
-            notes: r.notes,
-        },
+    match lookup(&q.ip, &cfg) {
+        Ok(r) => {
+            // Persist results — manual probe populates the same DB as capture pipeline
+            if let Ok(conn) = db.lock() {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                for entry in &r.domains {
+                    if let Err(e) = store::upsert_domain(&conn, &entry.domain, &q.ip, now) {
+                        log::warn!("probe: upsert {}: {e}", entry.domain);
+                    }
+                }
+            }
+
+            pages::ProbeResult {
+                ip:       r.ip,
+                count:    r.count,
+                verified: r.verified,
+                domains:  r.domains.into_iter().map(|d| pages::ProbeEntry {
+                    domain:  d.domain,
+                    sources: d.sources,
+                }).collect(),
+                notes: r.notes,
+            }
+        }
         Err(e) => pages::ProbeResult {
             ip:       q.ip.clone(),
             count:    0,

@@ -390,6 +390,7 @@ pub fn upsert_domain(conn: &Connection, domain: &str, ip: &str, now: i64) -> Res
     Ok(())
 }
 
+#[allow(dead_code)] // Phase 3
 pub fn insert_alert(
     conn: &Connection,
     domain: &str,
@@ -411,6 +412,7 @@ pub fn ack_alert(conn: &Connection, id: i64) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)] // Phase 3
 pub fn update_domain_risk(conn: &Connection, domain: &str, risk_score: u32, decision: &str) -> Result<()> {
     conn.execute(
         "UPDATE domains SET risk_score=?1, decision=?2 WHERE domain=?3",
@@ -419,6 +421,7 @@ pub fn update_domain_risk(conn: &Connection, domain: &str, risk_score: u32, deci
     Ok(())
 }
 
+#[allow(dead_code)] // Phase 2
 pub fn record_probe_run(conn: &Connection, domain: &str, ts: i64, success: bool) -> Result<()> {
     conn.execute(
         "INSERT INTO probe_runs (domain,ts,success) VALUES (?1,?2,?3)",
@@ -432,6 +435,7 @@ pub fn record_probe_run(conn: &Connection, domain: &str, ts: i64, success: bool)
     Ok(())
 }
 
+#[allow(dead_code)] // Phase 3
 pub fn inc_filter_decision(conn: &Connection, decision: &str) -> Result<()> {
     let col = match decision {
         "skip"  => "total_skip",

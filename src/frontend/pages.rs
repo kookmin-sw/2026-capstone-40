@@ -23,6 +23,7 @@ mod filters {
     }
 
     /// `{{ s|truncate(n) }}` — truncates to n chars, appends "…" if cut.
+    #[allow(dead_code)] // used by askama templates; Rust can't see template call sites
     pub fn truncate(s: &str, len: &usize) -> askama::Result<String> {
         if s.chars().count() <= *len {
             Ok(s.to_string())
@@ -42,7 +43,7 @@ mod filters {
         format!("{y:04}-{m:02}-{d:02} {hh:02}:{mm:02}")
     }
 
-    fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
+    fn days_to_ymd(days: u64) -> (u64, u64, u64) {
         // Proleptic Gregorian: algorithm by Henry Fliegel & Thomas Van Flandern
         let z  = days + 719_468;
         let era = z / 146_097;
