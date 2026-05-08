@@ -64,9 +64,11 @@ fn init_schema(conn: &Connection) -> Result<()> {
             ts             INTEGER NOT NULL,
             status_code    INTEGER,
             title          TEXT,
+            h1_text        TEXT,
             has_login_form INTEGER NOT NULL DEFAULT 0,
             redirect_depth INTEGER NOT NULL DEFAULT 0,
-            html_hash      TEXT
+            html_hash      TEXT,
+            simhash_text   INTEGER
         );
         CREATE TABLE IF NOT EXISTS pipeline_stats (
             id            INTEGER PRIMARY KEY CHECK (id = 1),
@@ -87,7 +89,11 @@ fn init_schema(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_alerts_ts     ON alerts(ts DESC);
         CREATE INDEX IF NOT EXISTS idx_alerts_domain ON alerts(domain);
         CREATE INDEX IF NOT EXISTS idx_domains_last  ON domains(last_seen DESC);
-    ")
+    ")?;
+    // additive migrations — silently ignored if column already exists
+    conn.execute("ALTER TABLE snapshots ADD COLUMN simhash_text INTEGER", []).ok();
+    conn.execute("ALTER TABLE snapshots ADD COLUMN h1_text TEXT", []).ok();
+    Ok(())
 }
 
 // ── query result types ────────────────────────────────────────────────────────
