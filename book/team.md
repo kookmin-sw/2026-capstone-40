@@ -1,25 +1,25 @@
-# Team
+# 팀 소개
 
-Capstone 2026 Team 40 developed the Traffic-to-Domain Risk Monitor.
+Capstone 2026 Team 40은 Traffic-to-Domain Risk Monitor를 개발했습니다.
 
-## Responsibilities
+## 역할
 
-| Area | Responsibility |
+| 영역 | 담당 내용 |
 | --- | --- |
-| Capture pipeline | Traffic intake, `.pcap` handling, cooldown behavior, and filtering boundaries. |
-| Domain intelligence | Reverse IP lookup, source selection, verification, and caching behavior. |
-| Risk analysis | Thresholds, scoring behavior, alert severity, and decision labels. |
-| Dashboard | Rust routes, Askama templates, charts, and analyst-facing pages. |
-| Documentation | GitHub Pages site, Markdown content, demo script, and usage guide. |
+| 캡처 파이프라인 | 트래픽 입력, `.pcap` 처리, 재처리 대기 시간, 필터링 경계. |
+| 도메인 인텔리전스 | 역방향 IP 조회, 소스 선택, 검증, 캐시 동작. |
+| 위험 분석 | 임계값, 점수화 동작, 알림 심각도, 결정 라벨. |
+| 대시보드 | Rust 라우트, Askama 템플릿, 차트, 분석자용 페이지. |
+| 문서화 | GitHub Pages 사이트, Markdown 콘텐츠, 데모 스크립트, 사용 가이드. |
 
-## Project Repository
+## 프로젝트 저장소
 
-Source code is maintained at:
+소스 코드는 다음 저장소에서 관리됩니다:
 
 ```text
 https://github.com/kookmin-sw/2026-capstone-40
 ```
 
-## Submission Notes
+## 제출 참고 사항
 
-The original capstone template asks for project introduction, demo, team introduction, usage, and additional notes. This documentation covers those sections through the overview, demo, team, usage, architecture, and implementation pages.
+원본 캡스톤 템플릿은 프로젝트 소개, 소개 영상 또는 데모, 팀 소개, 사용법, 기타 내용을 요구합니다. 이 문서는 개요, 데모, 팀, 사용법, 아키텍처, 구현 페이지를 통해 해당 항목을 다룹니다.

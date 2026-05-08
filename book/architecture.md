@@ -1,39 +1,39 @@
-# Architecture
+# 아키텍처
 
-The project is organized around a local monitoring pipeline and a server-rendered Rust interface.
+이 프로젝트는 로컬 모니터링 파이프라인과 서버 렌더링 방식의 Rust 인터페이스를 중심으로 구성됩니다.
 
-## Runtime Components
+## 런타임 구성 요소
 
-| Component | Responsibility |
+| 구성 요소 | 역할 |
 | --- | --- |
-| Capture | Reads live traffic or offline packet captures and extracts network observations. |
-| IP-to-domain lookup | Maps observed IP addresses to candidate domains using PTR and external lookup sources. |
-| Filter | Classifies targets into `skip`, `watch`, or `probe` using configurable thresholds. |
-| Probe | Fetches and records metadata for targets that deserve deeper inspection. |
-| Store | Persists domain history, alerts, pipeline status, and probe state in SQLite. |
-| Frontend | Renders the dashboard, alerts, domains, domain detail, charts, and probe pages. |
+| Capture | 실시간 트래픽 또는 오프라인 패킷 캡처를 읽고 네트워크 관찰 정보를 추출합니다. |
+| IP-to-domain lookup | PTR 및 외부 조회 소스를 사용해 관찰된 IP 주소를 후보 도메인으로 매핑합니다. |
+| Filter | 설정 가능한 임계값을 기준으로 대상을 `skip`, `watch`, `probe`로 분류합니다. |
+| Probe | 더 깊은 분석이 필요한 대상의 메타데이터를 수집하고 기록합니다. |
+| Store | 도메인 이력, 알림, 파이프라인 상태, 프로브 상태를 SQLite에 저장합니다. |
+| Frontend | 대시보드, 알림, 도메인 목록, 도메인 상세, 차트, 프로브 페이지를 렌더링합니다. |
 
-## Rust Stack
+## Rust 스택
 
-- `tiny_http` provides the local HTTP server.
-- `askama` renders HTML templates.
-- `rusqlite` stores dashboard and pipeline state.
-- `serde`, `serde_json`, and `toml` handle configuration and structured data.
-- `ureq` supports HTTP calls for probing and lookup utilities.
+- `tiny_http`는 로컬 HTTP 서버를 제공합니다.
+- `askama`는 HTML 템플릿을 렌더링합니다.
+- `rusqlite`는 대시보드 및 파이프라인 상태를 저장합니다.
+- `serde`, `serde_json`, `toml`은 설정과 구조화된 데이터를 처리합니다.
+- `ureq`는 프로브와 조회 유틸리티에서 사용하는 HTTP 호출을 지원합니다.
 
-## Data Flow
+## 데이터 흐름
 
-1. Capture observes network traffic from an interface or `.pcap`.
-2. Observed IP addresses enter the lookup and filtering stages.
-3. Reverse lookup sources produce candidate domains.
-4. Risk scoring assigns a decision: `skip`, `watch`, or `probe`.
-5. Probe work records metadata and snapshot evidence.
-6. The dashboard exposes recent domains, alerts, severity counts, and pipeline status.
+1. Capture가 네트워크 인터페이스 또는 `.pcap`에서 트래픽을 관찰합니다.
+2. 관찰된 IP 주소가 조회 및 필터링 단계로 전달됩니다.
+3. 역방향 조회 소스가 후보 도메인을 생성합니다.
+4. 위험도 점수가 `skip`, `watch`, `probe` 결정을 부여합니다.
+5. Probe 작업이 메타데이터와 스냅샷 증거를 기록합니다.
+6. 대시보드는 최근 도메인, 알림, 심각도 집계, 파이프라인 상태를 표시합니다.
 
-## Delivered Interface
+## 제공 인터페이스
 
-- Dashboard: current totals, alert severity breakdown, recent alerts, recent domains, and pipeline status.
-- Alerts: severity, type, domain, detail, timestamp, and acknowledgment state.
-- Domains: risk score, decision, IP list, last seen time, and alert count.
-- Domain detail: IP history, risk class, alert history, signals, and snapshots.
-- Probe: reverse IP lookup with source selection and optional verification.
+- Dashboard: 현재 집계, 알림 심각도 분포, 최근 알림, 최근 도메인, 파이프라인 상태.
+- Alerts: 심각도, 유형, 도메인, 상세 정보, 타임스탬프, 확인 상태.
+- Domains: 위험도 점수, 결정, IP 목록, 마지막 관찰 시각, 알림 수.
+- Domain detail: IP 이력, 위험도 등급, 알림 이력, 신호, 스냅샷.
+- Probe: 소스 선택과 선택적 검증을 포함한 역방향 IP 조회.

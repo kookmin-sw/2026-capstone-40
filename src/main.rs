@@ -7,32 +7,32 @@ const PAGES: &[Page] = &[
     Page {
         source: "book/index.md",
         output: "index.html",
-        title: "Overview",
+        title: "개요",
     },
     Page {
         source: "book/architecture.md",
         output: "architecture.html",
-        title: "Architecture",
+        title: "아키텍처",
     },
     Page {
         source: "book/implementation.md",
         output: "implementation.html",
-        title: "Implementation",
+        title: "구현",
     },
     Page {
         source: "book/demo.md",
         output: "demo.html",
-        title: "Demo",
+        title: "데모",
     },
     Page {
         source: "book/usage.md",
         output: "usage.html",
-        title: "Usage",
+        title: "사용법",
     },
     Page {
         source: "book/team.md",
         output: "team.html",
-        title: "Team",
+        title: "팀 소개",
     },
 ];
 
@@ -96,12 +96,12 @@ fn render_page(page: &Page, content: &str) -> String {
 
     format!(
         r#"<!doctype html>
-<html lang="en">
+<html lang="ko">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{title} | Capstone 2026</title>
-  <meta name="description" content="Rust-based traffic-to-domain risk monitoring capstone project">
+  <meta name="description" content="Rust 기반 traffic-to-domain 위험 모니터링 캡스톤 프로젝트">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -110,7 +110,7 @@ fn render_page(page: &Page, content: &str) -> String {
       <p class="eyebrow">Capstone 2026 Team 40</p>
       <a class="brand" href="index.html">Traffic-to-Domain Risk Monitor</a>
     </div>
-    <nav aria-label="Main navigation">
+    <nav aria-label="주요 내비게이션">
 {nav}
     </nav>
   </header>
@@ -133,9 +133,9 @@ fn render_not_found() -> String {
         &Page {
             source: "",
             output: "404.html",
-            title: "Not Found",
+            title: "페이지 없음",
         },
-        "<h1>Page not found</h1>\n<p>The requested page is not part of the Capstone 2026 documentation.</p>",
+        "<h1>페이지를 찾을 수 없습니다</h1>\n<p>요청한 페이지는 Capstone 2026 문서에 포함되어 있지 않습니다.</p>",
     )
 }
 

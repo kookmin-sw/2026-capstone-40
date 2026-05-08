@@ -1,52 +1,52 @@
-# Implementation
+# 구현
 
-The completed system is organized as a local monitoring pipeline with a Rust-rendered investigation interface.
+완성된 시스템은 로컬 모니터링 파이프라인과 Rust로 렌더링되는 조사 인터페이스로 구성됩니다.
 
-## Capture and Store
+## 캡처 및 저장
 
-The capture layer reads live traffic or offline `.pcap` input, normalizes useful observations, and writes durable state to SQLite.
+캡처 계층은 실시간 트래픽 또는 오프라인 `.pcap` 입력을 읽고, 유용한 관찰 정보를 정규화한 뒤 SQLite에 지속 가능한 상태로 저장합니다.
 
-Implemented behavior:
+구현된 동작:
 
-- Configurable capture source.
-- IP cooldown and private-address filtering.
-- Stored domain and IP observations.
-- Dashboard-visible pipeline status.
+- 설정 가능한 캡처 소스.
+- IP 재처리 대기 시간과 사설 주소 필터링.
+- 도메인 및 IP 관찰 정보 저장.
+- 대시보드에서 확인 가능한 파이프라인 상태.
 
-## Active Probe and Snapshot
+## 능동 프로브 및 스냅샷
 
-Targets that cross the configured risk threshold are probed so the analyst can review domain evidence instead of raw traffic alone.
+설정된 위험도 임계값을 넘는 대상은 프로브되어, 분석자가 원시 트래픽만이 아니라 도메인 기반 증거를 검토할 수 있습니다.
 
-Implemented behavior:
+구현된 동작:
 
-- HTML fetch and HTTP metadata capture.
-- Redirect chain recording.
-- Screenshot support through headless Chromium when configured.
-- Asset and favicon collection for fingerprinting.
-- Snapshot storage.
-- Domain detail evidence history.
+- HTML 가져오기와 HTTP 메타데이터 수집.
+- 리다이렉트 체인 기록.
+- 설정된 경우 headless Chromium을 통한 스크린샷 지원.
+- 핑거프린팅을 위한 asset 및 favicon 수집.
+- 스냅샷 저장.
+- 도메인 상세 증거 이력.
 
-## Filter and Score
+## 필터 및 점수화
 
-The filter classifies observed domains into `skip`, `watch`, or `probe` decisions using visible thresholds and risk classes.
+필터는 명확한 임계값과 위험도 등급을 사용해 관찰된 도메인을 `skip`, `watch`, `probe` 결정으로 분류합니다.
 
-Implemented behavior:
+구현된 동작:
 
-- Signal rows on domain detail pages.
-- Configurable `watch` and `probe` thresholds: below `30` skips, `30` to `60` watches, above `60` probes.
-- Clear risk classes for low, medium, and high risk.
-- Alert generation for high-priority findings.
+- 도메인 상세 페이지의 신호 행.
+- 설정 가능한 `watch` 및 `probe` 임계값: `30` 미만은 skip, `30`부터 `60`까지는 watch, `60` 초과는 probe.
+- 낮음, 중간, 높음 위험도에 대한 명확한 등급.
+- 우선순위가 높은 결과에 대한 알림 생성.
 
-Scoring inputs include known-bad indicators, suspicious TLDs, entropy, typosquatting distance, homograph signals, fast-flux behavior, and newly observed domains.
+점수 입력에는 known-bad 지표, 의심스러운 TLD, 엔트로피, typosquatting 거리, homograph 신호, fast-flux 동작, 새로 관찰된 도메인이 포함됩니다.
 
-## Dashboard and Review
+## 대시보드 및 검토
 
-The dashboard gives the reviewer a compact operational view and links summary metrics to domain and alert detail.
+대시보드는 검토자에게 간결한 운영 화면을 제공하고, 요약 지표를 도메인 및 알림 상세 정보와 연결합니다.
 
-Implemented behavior:
+구현된 동작:
 
-- Active alert review.
-- Domain inventory.
-- Severity breakdown.
-- Probe history.
-- Acknowledgment workflow.
+- 활성 알림 검토.
+- 도메인 목록.
+- 심각도 분포.
+- 프로브 이력.
+- 확인 처리 흐름.

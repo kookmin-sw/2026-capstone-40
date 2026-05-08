@@ -1,66 +1,66 @@
-# Usage
+# 사용법
 
-The project runs as a local Rust application with a small web dashboard.
+이 프로젝트는 작은 웹 대시보드를 포함한 로컬 Rust 애플리케이션으로 실행됩니다.
 
-## Install
+## 설치
 
-Requirements:
+요구 사항:
 
-- Rust toolchain with Cargo.
-- SQLite support through `rusqlite`.
-- Optional packet capture input from a live interface or `.pcap` file.
+- Cargo를 포함한 Rust toolchain.
+- `rusqlite`를 통한 SQLite 지원.
+- 선택 사항: 실시간 인터페이스 또는 `.pcap` 파일 기반 패킷 캡처 입력.
 
-Install dependencies and build:
+의존성을 설치하고 빌드합니다:
 
 ```bash
 cargo build
 ```
 
-## Run
+## 실행
 
-Start the application:
+애플리케이션을 시작합니다:
 
 ```bash
 cargo run -- serve
 ```
 
-The example configuration in the source repository binds to:
+소스 저장소의 예시 설정은 다음 주소에 바인딩합니다:
 
 ```text
 0.0.0.0:8080
 ```
 
-## Configure
+## 설정
 
-The application loads `capstone.toml` from the current directory first, then checks:
+애플리케이션은 먼저 현재 디렉터리의 `capstone.toml`을 읽고, 없으면 다음 위치를 확인합니다:
 
 ```text
 ~/.config/capstone/capstone.toml
 ```
 
-Important configuration areas:
+주요 설정 영역:
 
-- `store`: database path and snapshot directory.
-- `capture`: live interface, `.pcap` file, IP cooldown, and private-address filtering.
-- `probe`: timeout, maximum assets, screenshot behavior, and Chromium path.
-- `filter`: watch and probe thresholds.
-- `api`: bind address and worker count.
-- `ip_to_domain`: lookup sources, cache path, and verification behavior.
+- `store`: 데이터베이스 경로와 스냅샷 디렉터리.
+- `capture`: 실시간 인터페이스, `.pcap` 파일, IP 재처리 대기 시간, 사설 주소 필터링.
+- `probe`: timeout, 최대 asset 수, 스크린샷 동작, Chromium 경로.
+- `filter`: watch 및 probe 임계값.
+- `api`: bind 주소와 worker 수.
+- `ip_to_domain`: 조회 소스, 캐시 경로, 검증 동작.
 
-## CLI Shape
+## CLI 형태
 
-The source plan defines these subcommands:
+소스 계획은 다음 하위 명령을 정의합니다:
 
-- `serve`: start the API and frontend server.
-- `capture`: capture packets from a live NIC or `.pcap` file.
-- `probe`: actively probe a single domain.
-- `import-bad`: import a known-bad indicator list.
-- `score`: run passive risk scoring on a domain.
+- `serve`: API 및 frontend 서버를 시작합니다.
+- `capture`: 실시간 NIC 또는 `.pcap` 파일에서 패킷을 캡처합니다.
+- `probe`: 단일 도메인을 능동적으로 프로브합니다.
+- `import-bad`: known-bad 지표 목록을 가져옵니다.
+- `score`: 도메인에 대해 수동 위험도 점수를 계산합니다.
 
-## Dashboard Routes
+## 대시보드 라우트
 
-- `/dashboard`: overview metrics and pipeline status.
-- `/alerts`: active alert review.
-- `/domains`: domain inventory.
-- `/domains/<domain>`: domain detail and history.
-- `/probe`: reverse IP lookup tool.
+- `/dashboard`: 개요 지표와 파이프라인 상태.
+- `/alerts`: 활성 알림 검토.
+- `/domains`: 도메인 목록.
+- `/domains/<domain>`: 도메인 상세 및 이력.
+- `/probe`: 역방향 IP 조회 도구.

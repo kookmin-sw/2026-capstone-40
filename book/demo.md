@@ -1,29 +1,29 @@
-# Demo
+# 데모
 
-The demo presents the investigation loop from traffic capture to domain review.
+데모는 트래픽 캡처부터 도메인 검토까지 이어지는 조사 흐름을 보여줍니다.
 
-## Walkthrough
+## 진행 순서
 
-1. Start with a capture source or prepared `.pcap`.
-2. Show the dashboard totals: domains, active alerts, captured IPs, and probe runs.
-3. Open the domains list and compare risk scores.
-4. Open one domain detail page and show IP history plus alerts.
-5. Run an IP probe and explain how source selection and verification affect results.
-6. Acknowledge an alert to show the review workflow.
+1. 캡처 소스 또는 준비된 `.pcap`으로 시작합니다.
+2. 대시보드에서 도메인 수, 활성 알림, 캡처된 IP, 프로브 실행 수를 보여줍니다.
+3. 도메인 목록을 열고 위험도 점수를 비교합니다.
+4. 도메인 상세 페이지를 열어 IP 이력과 알림을 확인합니다.
+5. IP 프로브를 실행하고 소스 선택과 검증 옵션이 결과에 미치는 영향을 설명합니다.
+6. 알림을 확인 처리하여 검토 흐름을 보여줍니다.
 
-## Preview Assets
+## 미리보기 자료
 
-- Dashboard screenshot or video clip.
-- Domains list screenshot.
-- Domain detail screenshot.
-- Probe result screenshot.
-- Short walkthrough video showing the full flow.
+- 대시보드 스크린샷 또는 영상 클립.
+- 도메인 목록 스크린샷.
+- 도메인 상세 스크린샷.
+- 프로브 결과 스크린샷.
+- 전체 흐름을 보여주는 짧은 시연 영상.
 
-## Evaluation Story
+## 평가 관점
 
-The project is evaluated by measuring whether the pipeline reduces manual triage work:
+이 프로젝트는 파이프라인이 수동 분류 작업을 얼마나 줄이는지로 평가할 수 있습니다:
 
-- How many raw IP observations become domain candidates?
-- How many candidates are skipped before manual review?
-- How often do high-risk scores produce useful probe evidence?
-- How quickly can a reviewer move from alert to domain context?
+- 원시 IP 관찰 중 몇 개가 후보 도메인으로 변환되는가?
+- 수동 검토 전에 몇 개의 후보가 제외되는가?
+- 높은 위험도 점수가 실제로 유용한 프로브 증거를 얼마나 자주 생성하는가?
+- 검토자가 알림에서 도메인 맥락까지 얼마나 빠르게 이동할 수 있는가?
