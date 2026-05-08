@@ -3,8 +3,10 @@ mod config;
 mod frontend;
 mod ip_to_domain;
 mod logger;
+mod paths;
 mod pipeline;
 mod store;
+mod time;
 // mod passive_filter;  // Phase 3
 // mod active_probe;    // Phase 2
 // mod fingerprint;     // Phase 2

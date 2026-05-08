@@ -96,7 +96,7 @@ pub fn url_decode(s: &str) -> String {
         }
     }
     String::from_utf8(bytes)
-        .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+        .unwrap_or_else(|e| String::from_utf8_lossy(&e.into_bytes()).into_owned())
 }
 
 fn hex_val(b: u8) -> u8 {

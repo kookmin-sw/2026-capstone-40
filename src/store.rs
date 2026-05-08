@@ -3,6 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{Connection, Result, params};
 
+use crate::paths::expand_tilde;
+use crate::time::now_secs;
+
 pub type Db = Arc<Mutex<Connection>>;
 
 // ── open / init ───────────────────────────────────────────────────────────────
@@ -193,80 +196,66 @@ pub fn all_alerts(conn: &Connection, include_acked: bool) -> Vec<Alert> {
 }
 
 pub fn recent_domains(conn: &Connection, limit: usize) -> Vec<Domain> {
-    let mut stmt = match conn.prepare(
-        "SELECT id,domain,risk_score,decision,last_seen FROM domains
-         ORDER BY last_seen DESC LIMIT ?1",
-    ) {
-        Ok(s)  => s,
-        Err(_) => return vec![],
-    };
-    let rows: Vec<(i64, String, Option<i64>, Option<String>, i64)> =
-        match stmt.query_map([limit as i64], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
-        }) {
-            Ok(mapped) => mapped.filter_map(|r| r.ok()).collect(),
-            Err(_)     => return vec![],
-        };
-
-    rows.into_iter()
-        .map(|(id, domain, risk_score, decision, last_seen)| {
-            let ips = domain_ips_for(conn, id);
-            let alert_count = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM alerts WHERE domain=?1 AND acknowledged=0",
-                    [&domain],
-                    |r| r.get::<_, i64>(0),
-                )
-                .unwrap_or(0) as u32;
-            Domain {
-                domain,
-                risk_score: risk_score.map(|s| s as u32),
-                decision,
-                ips,
-                last_seen,
-                alert_count,
-            }
-        })
-        .collect()
+    query_domains(conn, Some(limit))
 }
 
 pub fn all_domains(conn: &Connection) -> Vec<Domain> {
-    let mut stmt = match conn.prepare(
-        "SELECT id,domain,risk_score,decision,last_seen FROM domains ORDER BY last_seen DESC",
-    ) {
+    query_domains(conn, None)
+}
+
+/// Single-query domain list with correlated subqueries — avoids N+1.
+fn query_domains(conn: &Connection, limit: Option<usize>) -> Vec<Domain> {
+    let sql = "SELECT d.domain, d.risk_score, d.decision, d.last_seen,
+                      COALESCE((SELECT COUNT(*) FROM alerts
+                                WHERE domain=d.domain AND acknowledged=0), 0) AS alert_count,
+                      COALESCE((SELECT GROUP_CONCAT(ip, ',') FROM (
+                          SELECT ip FROM domain_ips
+                          WHERE domain_id=d.id ORDER BY last_seen DESC LIMIT 5
+                      )), '') AS ips_csv
+               FROM domains d
+               ORDER BY d.last_seen DESC";
+
+    let limited = if limit.is_some() {
+        format!("{sql} LIMIT ?1")
+    } else {
+        sql.to_owned()
+    };
+
+    let mut stmt = match conn.prepare(&limited) {
         Ok(s)  => s,
         Err(_) => return vec![],
     };
-    let rows: Vec<(i64, String, Option<i64>, Option<String>, i64)> =
-        match stmt.query_map([], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
-        }) {
-            Ok(mapped) => mapped.filter_map(|r| r.ok()).collect(),
-            Err(_)     => return vec![],
-        };
 
-    rows.into_iter()
-        .map(|(id, domain, risk_score, decision, last_seen)| {
-            let ips = domain_ips_for(conn, id);
-            let alert_count = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM alerts WHERE domain=?1 AND acknowledged=0",
-                    [&domain],
-                    |r| r.get::<_, i64>(0),
-                )
-                .unwrap_or(0) as u32;
-            Domain {
-                domain,
-                risk_score: risk_score.map(|s| s as u32),
-                decision,
-                ips,
-                last_seen,
-                alert_count,
-            }
+    let map_row = |r: &rusqlite::Row| -> rusqlite::Result<Domain> {
+        let ips_csv: String = r.get(5)?;
+        let ips = if ips_csv.is_empty() {
+            vec![]
+        } else {
+            ips_csv.split(',').map(String::from).collect()
+        };
+        Ok(Domain {
+            domain:      r.get(0)?,
+            risk_score:  r.get::<_, Option<i64>>(1)?.map(|s| s as u32),
+            decision:    r.get(2)?,
+            last_seen:   r.get(3)?,
+            alert_count: r.get::<_, i64>(4)? as u32,
+            ips,
         })
-        .collect()
+    };
+
+    match limit {
+        Some(n) => match stmt.query_map([n as i64], map_row) {
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Err(_)   => vec![],
+        },
+        None => match stmt.query_map([], map_row) {
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Err(_)   => vec![],
+        },
+    }
 }
 
+// kept for domain detail page (returns first_seen + last_seen, not needed by list views)
 fn domain_ips_for(conn: &Connection, domain_id: i64) -> Vec<String> {
     let mut stmt = match conn.prepare(
         "SELECT ip FROM domain_ips WHERE domain_id=?1 ORDER BY last_seen DESC LIMIT 5",
@@ -528,20 +517,3 @@ pub fn traffic_data(conn: &Connection, minutes: usize) -> TrafficData {
     TrafficData { ips, alerts, domains, probes }
 }
 
-fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
-
-// ── util ──────────────────────────────────────────────────────────────────────
-
-fn expand_tilde(path: &str) -> String {
-    if let Some(rest) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return format!("{home}/{rest}");
-        }
-    }
-    path.to_owned()
-}

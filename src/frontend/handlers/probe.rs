@@ -3,6 +3,8 @@ use crate::config::Config;
 use crate::store::{self, Db};
 use crate::frontend::{pages, response, router::ProbeQuery};
 use crate::ip_to_domain::{lookup, LookupConfig};
+use crate::ip_to_domain::DEFAULT_DNS_CACHE;
+use crate::time::now_secs;
 
 pub fn handle(query: Option<ProbeQuery>, config: &Config, db: &Db) -> response::HttpResponse {
     let probe_result = query.as_ref().map(|q| run_probe(q, config, db));
@@ -37,7 +39,7 @@ fn run_probe(q: &ProbeQuery, config: &Config, db: &Db) -> pages::ProbeResult {
         .ip_to_domain
         .cache_path
         .clone()
-        .unwrap_or_else(|| "~/.cache/capstone/dns_cache.sqlite3".into());
+        .unwrap_or_else(|| DEFAULT_DNS_CACHE.into());
 
     let cfg = LookupConfig {
         sources:    q.sources.clone(),
@@ -48,17 +50,16 @@ fn run_probe(q: &ProbeQuery, config: &Config, db: &Db) -> pages::ProbeResult {
 
     match lookup(&q.ip, &cfg) {
         Ok(r) => {
-            // Persist results — manual probe populates the same DB as capture pipeline
-            if let Ok(conn) = db.lock() {
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs() as i64)
-                    .unwrap_or(0);
-                for entry in &r.domains {
-                    if let Err(e) = store::upsert_domain(&conn, &entry.domain, &q.ip, now) {
-                        log::warn!("probe: upsert {}: {e}", entry.domain);
+            match db.lock() {
+                Ok(conn) => {
+                    let now = now_secs();
+                    for entry in &r.domains {
+                        if let Err(e) = store::upsert_domain(&conn, &entry.domain, &q.ip, now) {
+                            log::warn!("probe: upsert {}: {e}", entry.domain);
+                        }
                     }
                 }
+                Err(e) => log::error!("probe: db lock poisoned: {e}"),
             }
 
             pages::ProbeResult {

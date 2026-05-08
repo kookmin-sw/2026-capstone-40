@@ -8,11 +8,11 @@
 
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex, mpsc::Receiver};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
-use crate::ip_to_domain::{LookupConfig, lookup};
+use crate::ip_to_domain::{LookupConfig, lookup, DEFAULT_DNS_CACHE};
 use crate::store::{self, Db};
+use crate::time::now_secs;
 
 pub fn spawn_workers(rx: Receiver<IpAddr>, db: Db, config: &Config) {
     let n = (config.api.workers as usize).max(1);
@@ -26,7 +26,7 @@ pub fn spawn_workers(rx: Receiver<IpAddr>, db: Db, config: &Config) {
             .ip_to_domain
             .cache_path
             .clone()
-            .unwrap_or_else(|| "~/.cache/capstone/dns_cache.sqlite3".into()),
+            .unwrap_or_else(|| DEFAULT_DNS_CACHE.into()),
     });
 
     for _ in 0..n {
@@ -42,7 +42,7 @@ pub fn spawn_workers(rx: Receiver<IpAddr>, db: Db, config: &Config) {
                 };
 
                 let ip_str = ip.to_string();
-                let now    = now_secs();
+                let now = now_secs();
 
                 // Count the IP in traffic buckets
                 if let Ok(conn) = db.lock() {
@@ -82,9 +82,3 @@ pub fn spawn_workers(rx: Receiver<IpAddr>, db: Db, config: &Config) {
     }
 }
 
-fn now_secs() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}

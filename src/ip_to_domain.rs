@@ -2,13 +2,18 @@ use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::{Mutex, OnceLock};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
+
+use crate::paths::expand_tilde;
+use crate::time::now_secs;
+
+pub const DEFAULT_DNS_CACHE: &str = "~/.cache/capstone/dns_cache.sqlite3";
 
 use rusqlite::{params, Connection};
 use serde::Serialize;
 use serde_json::Value;
 
-// ---- domain helpers ----
+// ── domain helpers ────────────────────────────────────────────────────────────
 
 fn looks_like_domain(s: &str) -> bool {
     let s = s.trim();
@@ -35,19 +40,7 @@ fn norm_domain(s: &str) -> String {
     s.trim().trim_end_matches('.').to_lowercase()
 }
 
-fn expand_tilde(path: &str) -> String {
-    if path == "~" {
-        return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
-    }
-    if let Some(rest) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return format!("{}/{}", home, rest);
-        }
-    }
-    path.to_string()
-}
-
-// ---- SQLite cache ----
+// ── SQLite cache ──────────────────────────────────────────────────────────────
 
 struct Cache {
     conn: Connection,
@@ -101,13 +94,6 @@ struct ProviderResult {
     domains: HashSet<String>,
     note: Option<String>,
     cache_stale: bool,
-}
-
-fn now_secs() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
 }
 
 fn sorted_vec(set: &HashSet<String>) -> Vec<String> {

@@ -1,6 +1,7 @@
+#![allow(dead_code)] // fields wired progressively; all used by final phase
+
 use serde::Deserialize;
 
-#[allow(dead_code)] // all fields used progressively across phases
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct Config {
     #[serde(default)]
@@ -17,7 +18,6 @@ pub struct Config {
     pub ip_to_domain: IpToDomainConfig,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 pub struct StoreConfig {
     pub db_path:      String,
@@ -43,7 +43,6 @@ pub struct CaptureConfig {
     pub skip_private:   bool,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ProbeConfig {
     #[serde(default = "default_probe_timeout")]
@@ -66,7 +65,6 @@ impl Default for ProbeConfig {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 pub struct FilterConfig {
     #[serde(default = "default_probe_threshold")]
@@ -95,7 +93,6 @@ impl Default for ApiConfig {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 pub struct IpToDomainConfig {
     #[serde(default = "default_sources")]
@@ -134,7 +131,7 @@ impl Config {
             "~/.config/capstone/capstone.toml",
         ];
         for path in candidates {
-            let expanded = expand_tilde(path);
+            let expanded = crate::paths::expand_tilde(path);
             if let Ok(text) = std::fs::read_to_string(&expanded) {
                 match toml::from_str::<Config>(&text) {
                     Ok(cfg) => return cfg,
@@ -146,11 +143,3 @@ impl Config {
     }
 }
 
-fn expand_tilde(path: &str) -> String {
-    if let Some(rest) = path.strip_prefix("~/") {
-        if let Some(home) = std::env::var("HOME").ok() {
-            return format!("{home}/{rest}");
-        }
-    }
-    path.to_owned()
-}
