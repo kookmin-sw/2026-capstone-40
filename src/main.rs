@@ -1,9 +1,17 @@
 mod render;
 
 use render::{markdown_to_html, render_not_found, render_page};
-use std::fs;
-use std::io;
-use std::path::Path;
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
+
+const SITE: Site = Site {
+    title: "Traffic-to-Domain Risk Monitor",
+    eyebrow: "Capstone 2026 Team 40",
+    description: "Rust 기반 traffic-to-domain 위험 모니터링 캡스톤 프로젝트",
+    output_dir: "site",
+};
 
 pub struct Page {
     pub source: &'static str,
@@ -11,42 +19,118 @@ pub struct Page {
     pub title: &'static str,
 }
 
+pub struct Site {
+    pub title: &'static str,
+    pub eyebrow: &'static str,
+    pub description: &'static str,
+    pub output_dir: &'static str,
+}
+
 const PAGES: &[Page] = &[
-    Page { source: "book/index.md",          output: "index.html",          title: "개요"       },
-    Page { source: "book/architecture.md",   output: "architecture.html",   title: "아키텍처"   },
-    Page { source: "book/implementation.md", output: "implementation.html", title: "구현"       },
-    Page { source: "book/demo.md",           output: "demo.html",           title: "데모"       },
-    Page { source: "book/usage.md",          output: "usage.html",          title: "사용법"     },
-    Page { source: "book/team.md",           output: "team.html",           title: "팀 소개"    },
+    Page {
+        source: "book/index.md",
+        output: "index.html",
+        title: "개요",
+    },
+    Page {
+        source: "book/architecture.md",
+        output: "architecture.html",
+        title: "아키텍처",
+    },
+    Page {
+        source: "book/implementation.md",
+        output: "implementation.html",
+        title: "구현",
+    },
+    Page {
+        source: "book/demo.md",
+        output: "demo.html",
+        title: "데모",
+    },
+    Page {
+        source: "book/usage.md",
+        output: "usage.html",
+        title: "사용법",
+    },
+    Page {
+        source: "book/team.md",
+        output: "team.html",
+        title: "팀 소개",
+    },
 ];
 
 fn main() -> io::Result<()> {
-    let out = Path::new("site");
-    if out.exists() {
-        fs::remove_dir_all(out)?;
-    }
-    fs::create_dir_all(out)?;
+    let stats = build_site(&SITE, PAGES)?;
+    println!(
+        "  done   {} page(s), {} skipped -> {}/",
+        stats.built, stats.skipped, SITE.output_dir
+    );
+    Ok(())
+}
 
-    fs::write(out.join("style.css"), include_str!("style.css"))?;
-    fs::write(out.join(".nojekyll"), "")?;
+fn build_site(site: &Site, pages: &[Page]) -> io::Result<BuildStats> {
+    let output_dir = Path::new(site.output_dir);
+    prepare_output_dir(output_dir)?;
+    write_static_assets(output_dir)?;
 
-    let mut count = 0usize;
-    for page in PAGES {
-        match fs::read_to_string(page.source) {
-            Ok(md) => {
-                let html = render_page(PAGES, page, &markdown_to_html(&md));
-                fs::write(out.join(page.output), html)?;
+    let mut stats = BuildStats::default();
+    for page in pages {
+        match build_page(site, pages, page, output_dir) {
+            Ok(()) => {
                 println!("  built  {}", page.output);
-                count += 1;
+                stats.built += 1;
             }
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                eprintln!("  skip   {} (missing: {})", page.output, page.source);
+            Err(BuildPageError::MissingSource { source }) => {
+                eprintln!("  skip   {} (missing: {})", page.output, source.display());
+                stats.skipped += 1;
             }
-            Err(e) => return Err(e),
+            Err(BuildPageError::Io(err)) => return Err(err),
         }
     }
 
-    fs::write(out.join("404.html"), render_not_found(PAGES))?;
-    println!("  done   {count} page(s) → {}/", out.display());
-    Ok(())
+    fs::write(output_dir.join("404.html"), render_not_found(site, pages))?;
+    Ok(stats)
+}
+
+fn prepare_output_dir(path: &Path) -> io::Result<()> {
+    if path.exists() {
+        fs::remove_dir_all(path)?;
+    }
+    fs::create_dir_all(path)
+}
+
+fn write_static_assets(output_dir: &Path) -> io::Result<()> {
+    fs::write(output_dir.join("style.css"), include_str!("style.css"))?;
+    fs::write(output_dir.join(".nojekyll"), "")
+}
+
+fn build_page(
+    site: &Site,
+    pages: &[Page],
+    page: &Page,
+    output_dir: &Path,
+) -> Result<(), BuildPageError> {
+    let markdown = fs::read_to_string(page.source).map_err(|err| {
+        if err.kind() == io::ErrorKind::NotFound {
+            BuildPageError::MissingSource {
+                source: PathBuf::from(page.source),
+            }
+        } else {
+            BuildPageError::Io(err)
+        }
+    })?;
+
+    let html = render_page(site, pages, page, &markdown_to_html(&markdown));
+    fs::write(output_dir.join(page.output), html).map_err(BuildPageError::Io)
+}
+
+#[derive(Default)]
+struct BuildStats {
+    built: usize,
+    skipped: usize,
+}
+
+enum BuildPageError {
+    MissingSource { source: PathBuf },
+    Io(io::Error),
 }
