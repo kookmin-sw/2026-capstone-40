@@ -126,6 +126,10 @@ fn copy_dir_recursive(source_dir: &Path, target_dir: &Path, copied: &mut usize) 
 
     for entry in fs::read_dir(source_dir)? {
         let entry = entry?;
+        if should_skip_asset(&entry.file_name().to_string_lossy()) {
+            continue;
+        }
+
         let source = entry.path();
         let target = target_dir.join(entry.file_name());
         let file_type = entry.file_type()?;
@@ -139,6 +143,10 @@ fn copy_dir_recursive(source_dir: &Path, target_dir: &Path, copied: &mut usize) 
     }
 
     Ok(())
+}
+
+fn should_skip_asset(file_name: &str) -> bool {
+    matches!(file_name, ".DS_Store" | "Thumbs.db") || file_name.ends_with('~')
 }
 
 fn build_page(
