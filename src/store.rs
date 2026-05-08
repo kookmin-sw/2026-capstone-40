@@ -19,7 +19,7 @@ pub fn open(path: &str) -> Result<Db, Box<dyn std::error::Error>> {
          PRAGMA synchronous=NORMAL;",
     )?;
     init_schema(&conn)?;
-    eprintln!("[store] opened {expanded}");
+    log::info!("opened {expanded}");
     Ok(Arc::new(Mutex::new(conn)))
 }
 
@@ -74,6 +74,13 @@ fn init_schema(conn: &Connection) -> Result<()> {
             last_probe_ts INTEGER
         );
         INSERT OR IGNORE INTO pipeline_stats (id) VALUES (1);
+        CREATE TABLE IF NOT EXISTS traffic_buckets (
+            minute  INTEGER NOT NULL PRIMARY KEY,
+            ips     INTEGER NOT NULL DEFAULT 0,
+            alerts  INTEGER NOT NULL DEFAULT 0,
+            domains INTEGER NOT NULL DEFAULT 0,
+            probes  INTEGER NOT NULL DEFAULT 0
+        );
         CREATE INDEX IF NOT EXISTS idx_alerts_ts     ON alerts(ts DESC);
         CREATE INDEX IF NOT EXISTS idx_alerts_domain ON alerts(domain);
         CREATE INDEX IF NOT EXISTS idx_domains_last  ON domains(last_seen DESC);
@@ -395,6 +402,7 @@ pub fn insert_alert(
         "INSERT INTO alerts (domain,severity,alert_type,detail,ts) VALUES (?1,?2,?3,?4,?5)",
         params![domain, severity as i64, alert_type, detail, ts],
     )?;
+    inc_bucket(conn, ts, 0, 1, 0, 0).ok();
     Ok(conn.last_insert_rowid())
 }
 
@@ -420,6 +428,7 @@ pub fn record_probe_run(conn: &Connection, domain: &str, ts: i64, success: bool)
         "UPDATE pipeline_stats SET total_probe=total_probe+1, last_probe_ts=?1 WHERE id=1",
         [ts],
     )?;
+    inc_bucket(conn, ts, 0, 0, 0, 1).ok();
     Ok(())
 }
 
@@ -435,6 +444,91 @@ pub fn inc_filter_decision(conn: &Connection, decision: &str) -> Result<()> {
         [],
     )?;
     Ok(())
+}
+
+// ── traffic time-series ───────────────────────────────────────────────────────
+
+/// Per-minute bucket counts for the last `minutes` minutes, oldest → newest.
+pub struct TrafficData {
+    pub ips:     Vec<u64>,
+    pub alerts:  Vec<u64>,
+    pub domains: Vec<u64>,
+    pub probes:  Vec<u64>,
+}
+
+/// Called by pipeline worker per IP processed.
+pub fn inc_traffic_ips(conn: &Connection, ts: i64, n: i64) -> Result<()> {
+    inc_bucket(conn, ts, n, 0, 0, 0)
+}
+
+/// Called by pipeline worker per domain resolved.
+pub fn inc_traffic_domains(conn: &Connection, ts: i64, n: i64) -> Result<()> {
+    inc_bucket(conn, ts, 0, 0, n, 0)
+}
+
+fn inc_bucket(conn: &Connection, ts: i64, ips: i64, alerts: i64, domains: i64, probes: i64) -> Result<()> {
+    let minute = ts - (ts % 60);
+    conn.execute(
+        "INSERT INTO traffic_buckets (minute,ips,alerts,domains,probes) VALUES (?1,?2,?3,?4,?5)
+         ON CONFLICT(minute) DO UPDATE SET
+           ips=ips+excluded.ips,
+           alerts=alerts+excluded.alerts,
+           domains=domains+excluded.domains,
+           probes=probes+excluded.probes",
+        params![minute, ips, alerts, domains, probes],
+    )?;
+    Ok(())
+}
+
+pub fn traffic_data(conn: &Connection, minutes: usize) -> TrafficData {
+    use std::collections::HashMap;
+    let now = now_secs();
+    let cutoff = now - (minutes as i64 * 60);
+    let current_minute = now - (now % 60);
+
+    let mut stmt = match conn.prepare(
+        "SELECT minute,ips,alerts,domains,probes FROM traffic_buckets WHERE minute>=?1",
+    ) {
+        Ok(s)  => s,
+        Err(_) => return TrafficData { ips: vec![0; minutes], alerts: vec![0; minutes], domains: vec![0; minutes], probes: vec![0; minutes] },
+    };
+
+    let buckets: HashMap<i64, (u64, u64, u64, u64)> =
+        match stmt.query_map([cutoff], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)? as u64,
+                r.get::<_, i64>(2)? as u64,
+                r.get::<_, i64>(3)? as u64,
+                r.get::<_, i64>(4)? as u64,
+            ))
+        }) {
+            Ok(rows) => rows
+                .filter_map(|r| r.ok())
+                .map(|(m, i, a, d, p)| (m, (i, a, d, p)))
+                .collect(),
+            Err(_) => HashMap::new(),
+        };
+
+    let mut ips     = Vec::with_capacity(minutes);
+    let mut alerts  = Vec::with_capacity(minutes);
+    let mut domains = Vec::with_capacity(minutes);
+    let mut probes  = Vec::with_capacity(minutes);
+
+    for i in (0..minutes as i64).rev() {
+        let minute = current_minute - (i * 60);
+        let (ip, al, do_, pr) = buckets.get(&minute).copied().unwrap_or((0, 0, 0, 0));
+        ips.push(ip); alerts.push(al); domains.push(do_); probes.push(pr);
+    }
+
+    TrafficData { ips, alerts, domains, probes }
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 // ── util ──────────────────────────────────────────────────────────────────────

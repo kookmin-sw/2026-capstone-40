@@ -1,5 +1,4 @@
 use serde::Deserialize;
-use std::path::PathBuf;
 
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct Config {
@@ -134,7 +133,7 @@ impl Config {
             if let Ok(text) = std::fs::read_to_string(&expanded) {
                 match toml::from_str::<Config>(&text) {
                     Ok(cfg) => return cfg,
-                    Err(e)  => eprintln!("[config] parse error in {expanded}: {e}"),
+                    Err(e)  => log::error!("parse error in {expanded}: {e}"),
                 }
             }
         }

@@ -26,23 +26,23 @@ pub fn run(cfg: &CaptureConfig, tx: Sender<IpAddr>) {
 
     match (&cfg.interface, &cfg.pcap_file) {
         (Some(iface), _) => {
-            eprintln!("[capture] opening interface {iface}");
+            log::info!("opening interface {iface}");
             match Capture::from_device(iface.as_str())
                 .and_then(|c| c.promisc(true).snaplen(65535).timeout(1000).open())
             {
                 Ok(cap)  => pump_live(cap, cfg, cooldown, skip_priv, &mut seen, &tx),
-                Err(e)   => eprintln!("[capture] failed to open {iface}: {e}"),
+                Err(e)   => log::error!("failed to open {iface}: {e}"),
             }
         }
         (_, Some(path)) => {
-            eprintln!("[capture] reading pcap {path}");
+            log::info!("reading pcap {path}");
             match Capture::from_file(path) {
                 Ok(cap)  => pump_file(cap, cfg, cooldown, skip_priv, &mut seen, &tx),
-                Err(e)   => eprintln!("[capture] failed to open {path}: {e}"),
+                Err(e)   => log::error!("failed to open {path}: {e}"),
             }
         }
         (None, None) => {
-            eprintln!("[capture] no source — set interface or pcap_file in capstone.toml");
+            log::warn!("no source — set interface or pcap_file in capstone.toml");
         }
     }
 }
@@ -62,7 +62,7 @@ fn pump_live(
             Ok(pkt)  => handle_packet(pkt.data, cooldown, skip_priv, seen, tx),
             Err(pcap::Error::TimeoutExpired) => continue,
             Err(e)   => {
-                eprintln!("[capture] read error: {e}");
+                log::error!("read error: {e}");
                 break;
             }
         }
@@ -83,7 +83,7 @@ fn pump_file(
             Err(_)  => break, // EOF or error — done
         }
     }
-    eprintln!("[capture] pcap file exhausted");
+    log::info!("pcap file exhausted");
 }
 
 // ── per-packet logic ──────────────────────────────────────────────────────────

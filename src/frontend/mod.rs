@@ -25,7 +25,7 @@ impl Server {
         let server = tiny_http::Server::http(&self.bind)
             .map_err(|e| format!("bind {}: {e}", self.bind))?;
 
-        eprintln!("frontend: listening on http://{}", self.bind);
+        log::info!("listening on http://{}", self.bind);
 
         for request in server.incoming_requests() {
             let route = router::Route::parse(request.method(), request.url());

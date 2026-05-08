@@ -14,7 +14,7 @@ pub use response::HttpResponse;
 pub fn dispatch(route: Route, config: &Config, db: &Db) -> HttpResponse {
     match route {
         Route::Dashboard              => dashboard::handle(config, db),
-        Route::Chart(ref name)        => chart::handle(name),
+        Route::Chart(ref name)        => chart::handle(name, db),
         Route::Alerts { show_acked }  => alerts::handle(show_acked, db),
         Route::Domains                => domains::handle(db),
         Route::Domain(ref d)          => domain::handle(d, db),
