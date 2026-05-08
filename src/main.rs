@@ -34,11 +34,6 @@ const PAGES: &[Page] = &[
         output: "team.html",
         title: "Team",
     },
-    Page {
-        source: "book/wasm.md",
-        output: "interactive-demo.html",
-        title: "Interactive Demo",
-    },
 ];
 
 struct Page {
