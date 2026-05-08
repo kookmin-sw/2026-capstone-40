@@ -8,6 +8,7 @@ use crate::paths::expand_tilde;
 use crate::time::now_secs;
 
 pub const DEFAULT_DNS_CACHE: &str = "~/.cache/capstone/dns_cache.sqlite3";
+pub const DEFAULT_CACHE_TTL_DAYS: u64 = 7;
 
 use rusqlite::{params, Connection};
 use serde::Serialize;
@@ -104,12 +105,11 @@ fn sorted_vec(set: &HashSet<String>) -> Vec<String> {
 
 // ---- PTR provider ----
 
-fn ptr_fetch(ip: &str, cache: &Cache) -> ProviderResult {
-    const TTL: i64 = 6 * 3600;
+fn ptr_fetch(ip: &str, cache: &Cache, ttl_s: i64) -> ProviderResult {
     let now = now_secs();
 
     if let Some((ts, _, Some(body))) = cache.get("ptr", ip) {
-        if now - ts < TTL {
+        if cache_fresh(now, ts, ttl_s) {
             if let Ok(s) = String::from_utf8(body) {
                 if let Ok(v) = serde_json::from_str::<Value>(&s) {
                     let domains = v["domains"]
@@ -152,13 +152,12 @@ fn ptr_fetch(ip: &str, cache: &Cache) -> ProviderResult {
 
 static HT_LAST: OnceLock<Mutex<Instant>> = OnceLock::new();
 
-fn hackertarget_fetch(ip: &str, cache: &Cache, timeout_s: f64) -> ProviderResult {
-    const TTL: i64 = 24 * 3600;
+fn hackertarget_fetch(ip: &str, cache: &Cache, timeout_s: f64, ttl_s: i64) -> ProviderResult {
     let now = now_secs();
     let cached = cache.get("hackertarget", ip);
 
     if let Some((ts, _, Some(ref body))) = cached {
-        if now - ts < TTL {
+        if cache_fresh(now, ts, ttl_s) {
             let domains = String::from_utf8_lossy(body)
                 .lines()
                 .filter(|l| looks_like_domain(l))
@@ -218,8 +217,16 @@ fn hackertarget_fetch(ip: &str, cache: &Cache, timeout_s: f64) -> ProviderResult
                 ..Default::default()
             }
         }
-        Err(e) => stale_or_empty("hackertarget", cached.as_ref(), format!("request failed: {e}")),
+        Err(e) => stale_or_empty(
+            "hackertarget",
+            cached.as_ref(),
+            format!("request failed: {e}"),
+        ),
     }
+}
+
+fn cache_fresh(now: i64, ts: i64, ttl_s: i64) -> bool {
+    ttl_s > 0 && now.saturating_sub(ts) < ttl_s
 }
 
 fn stale_or_empty(
@@ -257,11 +264,7 @@ fn doh_lookup(name: &str, rtype: &str, timeout_s: f64) -> HashSet<String> {
     let agent = ureq::AgentBuilder::new()
         .timeout(Duration::from_secs_f64(timeout_s))
         .build();
-    match agent
-        .get(&url)
-        .set("Accept", "application/dns-json")
-        .call()
-    {
+    match agent.get(&url).set("Accept", "application/dns-json").call() {
         Ok(resp) => resp
             .into_json::<Value>()
             .ok()
@@ -317,6 +320,7 @@ pub struct LookupConfig {
     pub verify: bool,
     pub timeout_s: f64,
     pub cache_path: String,
+    pub cache_ttl_days: u64,
 }
 
 impl Default for LookupConfig {
@@ -326,6 +330,7 @@ impl Default for LookupConfig {
             verify: false,
             timeout_s: 15.0,
             cache_path: "~/.cache/reverse_ip_domains/cache.sqlite3".into(),
+            cache_ttl_days: DEFAULT_CACHE_TTL_DAYS,
         }
     }
 }
@@ -346,26 +351,28 @@ pub struct LookupResult {
     pub notes: Vec<String>,
 }
 
-pub fn lookup(
-    ip: &str,
-    config: &LookupConfig,
-) -> Result<LookupResult, Box<dyn std::error::Error>> {
+pub fn lookup(ip: &str, config: &LookupConfig) -> Result<LookupResult, Box<dyn std::error::Error>> {
     let cache = Cache::new(&config.cache_path)?;
+    let cache_ttl_s = cache_ttl_secs(config.cache_ttl_days);
     let mut all_domains: HashSet<String> = HashSet::new();
     let mut dom_sources: HashMap<String, HashSet<String>> = HashMap::new();
     let mut notes: Vec<String> = Vec::new();
 
     for source in &config.sources {
         let res = match source.as_str() {
-            "ptr" => ptr_fetch(ip, &cache),
-            "hackertarget" => hackertarget_fetch(ip, &cache, config.timeout_s),
+            "ptr" => ptr_fetch(ip, &cache, cache_ttl_s),
+            "hackertarget" => hackertarget_fetch(ip, &cache, config.timeout_s, cache_ttl_s),
             other => {
                 notes.push(format!("unknown source '{other}'"));
                 continue;
             }
         };
         if let Some(ref n) = res.note {
-            let suffix = if res.cache_stale { " (stale cache)" } else { "" };
+            let suffix = if res.cache_stale {
+                " (stale cache)"
+            } else {
+                ""
+            };
             notes.push(format!("{}: {n}{suffix}", res.provider));
         }
         for d in res.domains {
@@ -391,12 +398,7 @@ pub fn lookup(
     let domains = sorted
         .iter()
         .map(|d| {
-            let mut srcs: Vec<_> = dom_sources
-                .get(d)
-                .into_iter()
-                .flatten()
-                .cloned()
-                .collect();
+            let mut srcs: Vec<_> = dom_sources.get(d).into_iter().flatten().cloned().collect();
             srcs.sort();
             DomainEntry {
                 domain: d.clone(),
@@ -413,4 +415,8 @@ pub fn lookup(
         domains,
         notes,
     })
+}
+
+fn cache_ttl_secs(days: u64) -> i64 {
+    days.saturating_mul(24 * 3600).min(i64::MAX as u64) as i64
 }

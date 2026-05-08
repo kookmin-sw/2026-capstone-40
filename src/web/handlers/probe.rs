@@ -1,10 +1,10 @@
-use askama::Template as _;
 use crate::config::Config;
-use crate::store::{self, Db};
-use crate::web::{pages, response, router::ProbeQuery};
-use crate::ip_to_domain::{lookup, LookupConfig};
 use crate::ip_to_domain::DEFAULT_DNS_CACHE;
+use crate::ip_to_domain::{lookup, LookupConfig};
+use crate::store::{self, Db};
 use crate::time::now_secs;
+use crate::web::{pages, response, router::ProbeQuery};
+use askama::Template as _;
 
 pub fn handle(query: Option<ProbeQuery>, config: &Config, db: &Db) -> response::HttpResponse {
     let probe_result = query.as_ref().map(|q| run_probe(q, config, db));
@@ -21,7 +21,7 @@ pub fn handle(query: Option<ProbeQuery>, config: &Config, db: &Db) -> response::
 
     let body = pages::ProbePage {
         page_title: "Probe",
-        active:     "probe",
+        active: "probe",
         query_ip,
         sources_ptr,
         sources_ht,
@@ -42,10 +42,11 @@ fn run_probe(q: &ProbeQuery, config: &Config, db: &Db) -> pages::ProbeResult {
         .unwrap_or_else(|| DEFAULT_DNS_CACHE.into());
 
     let cfg = LookupConfig {
-        sources:    q.sources.clone(),
-        verify:     q.verify,
-        timeout_s:  config.probe.timeout_s,
+        sources: q.sources.clone(),
+        verify: q.verify,
+        timeout_s: config.probe.timeout_s,
         cache_path,
+        cache_ttl_days: config.ip_to_domain.cache_ttl_days,
     };
 
     match lookup(&q.ip, &cfg) {
@@ -63,22 +64,26 @@ fn run_probe(q: &ProbeQuery, config: &Config, db: &Db) -> pages::ProbeResult {
             }
 
             pages::ProbeResult {
-                ip:       r.ip,
-                count:    r.count,
+                ip: r.ip,
+                count: r.count,
                 verified: r.verified,
-                domains:  r.domains.into_iter().map(|d| pages::ProbeEntry {
-                    domain:  d.domain,
-                    sources: d.sources,
-                }).collect(),
+                domains: r
+                    .domains
+                    .into_iter()
+                    .map(|d| pages::ProbeEntry {
+                        domain: d.domain,
+                        sources: d.sources,
+                    })
+                    .collect(),
                 notes: r.notes,
             }
         }
         Err(e) => pages::ProbeResult {
-            ip:       q.ip.clone(),
-            count:    0,
+            ip: q.ip.clone(),
+            count: 0,
             verified: false,
-            domains:  vec![],
-            notes:    vec![format!("error: {e}")],
+            domains: vec![],
+            notes: vec![format!("error: {e}")],
         },
     }
 }

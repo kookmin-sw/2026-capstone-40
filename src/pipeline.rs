@@ -7,10 +7,10 @@
 //!   4. Increments traffic buckets for charting
 
 use std::net::IpAddr;
-use std::sync::{Arc, Mutex, mpsc::Receiver};
+use std::sync::{mpsc::Receiver, Arc, Mutex};
 
 use crate::config::Config;
-use crate::ip_to_domain::{LookupConfig, lookup, DEFAULT_DNS_CACHE};
+use crate::ip_to_domain::{lookup, LookupConfig, DEFAULT_DNS_CACHE};
 use crate::store::{self, Db};
 use crate::time::now_secs;
 
@@ -19,19 +19,20 @@ pub fn spawn_workers(rx: Receiver<IpAddr>, db: Db, config: &Config) {
     let rx = Arc::new(Mutex::new(rx));
 
     let lookup_cfg = Arc::new(LookupConfig {
-        sources:    config.ip_to_domain.sources.clone(),
-        verify:     config.ip_to_domain.verify_doh,
-        timeout_s:  config.probe.timeout_s,
+        sources: config.ip_to_domain.sources.clone(),
+        verify: config.ip_to_domain.verify_doh,
+        timeout_s: config.probe.timeout_s,
         cache_path: config
             .ip_to_domain
             .cache_path
             .clone()
             .unwrap_or_else(|| DEFAULT_DNS_CACHE.into()),
+        cache_ttl_days: config.ip_to_domain.cache_ttl_days,
     });
 
     for _ in 0..n {
-        let rx        = Arc::clone(&rx);
-        let db        = db.clone();
+        let rx = Arc::clone(&rx);
+        let db = db.clone();
         let lookup_cfg = Arc::clone(&lookup_cfg);
 
         std::thread::spawn(move || {
@@ -54,7 +55,7 @@ pub fn spawn_workers(rx: Receiver<IpAddr>, db: Db, config: &Config) {
                 match lookup(&ip_str, &lookup_cfg) {
                     Ok(result) => {
                         let conn = match db.lock() {
-                            Ok(c)  => c,
+                            Ok(c) => c,
                             Err(_) => continue,
                         };
                         let mut new_domains: i64 = 0;
@@ -70,7 +71,12 @@ pub fn spawn_workers(rx: Receiver<IpAddr>, db: Db, config: &Config) {
                             log::info!(
                                 "{ip_str} → {} domain(s): {}",
                                 result.count,
-                                result.domains.iter().map(|d| d.domain.as_str()).collect::<Vec<_>>().join(", ")
+                                result
+                                    .domains
+                                    .iter()
+                                    .map(|d| d.domain.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
                             );
                         }
                     }
@@ -81,4 +87,3 @@ pub fn spawn_workers(rx: Receiver<IpAddr>, db: Db, config: &Config) {
         });
     }
 }
-
