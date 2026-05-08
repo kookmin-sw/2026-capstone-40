@@ -18,4 +18,6 @@ cargo run --release
 site/
 ```
 
+이미지나 영상 썸네일 같은 정적 자산은 `assets/`에 둡니다. 빌드 시 해당 파일들은 `site/assets/`로 복사됩니다.
+
 GitHub Pages 배포를 위해서는 `page` 브랜치에 push하고, 저장소의 Pages 소스가 GitHub Actions를 사용하도록 설정되어 있는지 확인합니다.

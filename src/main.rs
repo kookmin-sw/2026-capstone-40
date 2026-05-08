@@ -11,6 +11,7 @@ const SITE: Site = Site {
     eyebrow: "Capstone 2026 Team 40",
     description: "Rust 기반 traffic-to-domain 위험 모니터링 캡스톤 프로젝트",
     output_dir: "site",
+    assets_dir: "assets",
 };
 
 pub struct Page {
@@ -24,6 +25,7 @@ pub struct Site {
     pub eyebrow: &'static str,
     pub description: &'static str,
     pub output_dir: &'static str,
+    pub assets_dir: &'static str,
 }
 
 const PAGES: &[Page] = &[
@@ -62,8 +64,8 @@ const PAGES: &[Page] = &[
 fn main() -> io::Result<()> {
     let stats = build_site(&SITE, PAGES)?;
     println!(
-        "  done   {} page(s), {} skipped -> {}/",
-        stats.built, stats.skipped, SITE.output_dir
+        "  done   {} page(s), {} skipped, {} asset(s) -> {}/",
+        stats.built, stats.skipped, stats.assets, SITE.output_dir
     );
     Ok(())
 }
@@ -74,6 +76,11 @@ fn build_site(site: &Site, pages: &[Page]) -> io::Result<BuildStats> {
     write_static_assets(output_dir)?;
 
     let mut stats = BuildStats::default();
+    stats.assets = copy_assets(
+        Path::new(site.assets_dir),
+        &output_dir.join(site.assets_dir),
+    )?;
+
     for page in pages {
         match build_page(site, pages, page, output_dir) {
             Ok(()) => {
@@ -104,6 +111,36 @@ fn write_static_assets(output_dir: &Path) -> io::Result<()> {
     fs::write(output_dir.join(".nojekyll"), "")
 }
 
+fn copy_assets(source_dir: &Path, target_dir: &Path) -> io::Result<usize> {
+    if !source_dir.exists() {
+        return Ok(0);
+    }
+
+    let mut copied = 0;
+    copy_dir_recursive(source_dir, target_dir, &mut copied)?;
+    Ok(copied)
+}
+
+fn copy_dir_recursive(source_dir: &Path, target_dir: &Path, copied: &mut usize) -> io::Result<()> {
+    fs::create_dir_all(target_dir)?;
+
+    for entry in fs::read_dir(source_dir)? {
+        let entry = entry?;
+        let source = entry.path();
+        let target = target_dir.join(entry.file_name());
+        let file_type = entry.file_type()?;
+
+        if file_type.is_dir() {
+            copy_dir_recursive(&source, &target, copied)?;
+        } else if file_type.is_file() {
+            fs::copy(&source, &target)?;
+            *copied += 1;
+        }
+    }
+
+    Ok(())
+}
+
 fn build_page(
     site: &Site,
     pages: &[Page],
@@ -128,6 +165,7 @@ fn build_page(
 struct BuildStats {
     built: usize,
     skipped: usize,
+    assets: usize,
 }
 
 enum BuildPageError {
