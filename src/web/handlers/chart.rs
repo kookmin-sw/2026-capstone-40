@@ -1,5 +1,5 @@
 use crate::store::{self, Db};
-use crate::frontend::{chart::{self, Series}, response};
+use crate::web::{chart::{self, Series}, response};
 
 pub fn handle(name: &str, db: &Db) -> response::HttpResponse {
     let conn = match db.lock() {

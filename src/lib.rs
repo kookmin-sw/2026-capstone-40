@@ -1,6 +1,6 @@
 pub mod capture;
 pub mod config;
-pub mod frontend;
+pub mod web;
 pub mod html_sim;
 pub mod ip_to_domain;
 pub mod logger;
@@ -28,5 +28,5 @@ pub fn serve(bind: String, cfg: config::Config) {
 
     pipeline::spawn_workers(ip_rx, db.clone(), &cfg);
 
-    frontend::Server::new(bind, cfg, db).run().unwrap();
+    web::Server::new(bind, cfg, db).run().unwrap();
 }

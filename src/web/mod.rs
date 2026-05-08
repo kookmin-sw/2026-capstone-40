@@ -1,4 +1,5 @@
 pub mod chart;
+pub mod static_files;
 mod handlers;
 mod pages;
 mod response;

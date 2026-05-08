@@ -7,7 +7,7 @@ mod probe;
 
 use crate::config::Config;
 use crate::store::Db;
-use crate::frontend::{response, router::Route};
+use crate::web::{response, router::Route};
 
 pub use response::HttpResponse;
 
@@ -35,8 +35,7 @@ fn handle_ack(id: i64, db: &Db) -> HttpResponse {
 fn serve_static(name: &str) -> HttpResponse {
     match name {
         "style.css" => {
-            let css = include_str!("../../../frontend/style.css");
-            response::static_file("text/css; charset=utf-8", css.as_bytes().to_vec())
+            response::static_file("text/css; charset=utf-8", crate::web::static_files::STYLE_CSS.as_bytes().to_vec())
         }
         _ => response::not_found(),
     }

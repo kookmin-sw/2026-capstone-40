@@ -1,6 +1,6 @@
 use askama::Template as _;
 use crate::store::Db;
-use crate::frontend::{pages, response};
+use crate::web::{pages, response};
 use crate::store;
 
 pub fn handle(domain: &str, db: &Db) -> response::HttpResponse {

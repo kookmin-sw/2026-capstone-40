@@ -1,7 +1,7 @@
 use askama::Template as _;
 use crate::config::Config;
 use crate::store::{self, Db};
-use crate::frontend::{pages, response, router::ProbeQuery};
+use crate::web::{pages, response, router::ProbeQuery};
 use crate::ip_to_domain::{lookup, LookupConfig};
 use crate::ip_to_domain::DEFAULT_DNS_CACHE;
 use crate::time::now_secs;
