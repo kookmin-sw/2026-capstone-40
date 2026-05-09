@@ -1,7 +1,6 @@
 //! HTML content fingerprinting for cross-domain similarity detection.
 //!
-//! Mirrors the Python `utils/html_similarity` shape-content approach without a
-//! DOM parser dependency:
+//! Mirrors the legacy shape-content approach without a DOM parser dependency:
 //!
 //!   score = 0.85 x tag_bigram_jaccard + 0.15 x content_jaccard
 //!
@@ -23,6 +22,16 @@ use simhash::simhash_text;
 
 pub use metrics::{css_jaccard, hamming, title_similarity};
 pub use types::{PageFingerprint, Similarity};
+
+const STRUCTURE_WEIGHT: f32 = 0.85;
+const CONTENT_WEIGHT: f32 = 0.15;
+const HIGH_SHAPE_THRESHOLD: f32 = 0.65;
+const MODERATE_SHAPE_THRESHOLD: f32 = 0.50;
+const CORROBORATED_SHAPE_THRESHOLD: f32 = 0.30;
+const HIGH_SIMHASH_DISTANCE: u32 = 3;
+const MODERATE_SIMHASH_DISTANCE: u32 = 6;
+const CORROBORATING_TITLE_SIMILARITY: f32 = 0.80;
+const CORROBORATING_CSS_JACCARD: f32 = 0.70;
 
 /// Build all similarity signals used by this module from a raw HTML document.
 pub fn fingerprint(html: &str) -> PageFingerprint {
@@ -46,7 +55,7 @@ pub fn fingerprint(html: &str) -> PageFingerprint {
 pub fn shape_content_score(a: &PageFingerprint, b: &PageFingerprint) -> f32 {
     let structure = jaccard_str(&a.tag_bigrams, &b.tag_bigrams);
     let content = combined_content_jaccard(a, b);
-    0.85 * structure + 0.15 * content
+    STRUCTURE_WEIGHT * structure + CONTENT_WEIGHT * content
 }
 
 pub fn classify(a: &PageFingerprint, b: &PageFingerprint) -> Similarity {
@@ -57,14 +66,14 @@ pub fn classify(a: &PageFingerprint, b: &PageFingerprint) -> Similarity {
     let shape_score = shape_content_score(a, b);
     let simhash_distance = hamming(a.simhash, b.simhash);
 
-    if shape_score >= 0.65 && simhash_distance <= 3 {
+    if shape_score >= HIGH_SHAPE_THRESHOLD && simhash_distance <= HIGH_SIMHASH_DISTANCE {
         return Similarity::High;
     }
-    if shape_score >= 0.50 || simhash_distance <= 6 {
+    if shape_score >= MODERATE_SHAPE_THRESHOLD || simhash_distance <= MODERATE_SIMHASH_DISTANCE {
         return Similarity::Moderate;
     }
 
-    if shape_score >= 0.30 && corroborates_similarity(a, b) {
+    if shape_score >= CORROBORATED_SHAPE_THRESHOLD && corroborates_similarity(a, b) {
         return Similarity::Corroborated;
     }
 
@@ -94,11 +103,11 @@ fn combined_content_pool(fp: &PageFingerprint) -> HashSet<&String> {
 fn corroborates_similarity(a: &PageFingerprint, b: &PageFingerprint) -> bool {
     title_pair_similarity(&a.title, &b.title)
         || title_pair_similarity(&a.h1, &b.h1)
-        || css_jaccard(&a.css_classes, &b.css_classes) >= 0.70
+        || css_jaccard(&a.css_classes, &b.css_classes) >= CORROBORATING_CSS_JACCARD
 }
 
 fn title_pair_similarity(a: &Option<String>, b: &Option<String>) -> bool {
-    matches!((a, b), (Some(left), Some(right)) if title_similarity(left, right) >= 0.80)
+    matches!((a, b), (Some(left), Some(right)) if title_similarity(left, right) >= CORROBORATING_TITLE_SIMILARITY)
 }
 
 #[cfg(test)]
@@ -138,6 +147,16 @@ mod tests {
         assert!(
             !fp_n.word_tokens.contains("createelement"),
             "script content must not enter word tokens"
+        );
+    }
+
+    #[test]
+    fn unterminated_noise_block_is_excluded() {
+        let noisy = "<html><body><p>hello</p><script>document.write('hidden')";
+        let clean = "<html><body><p>hello</p></body></html>";
+        assert_eq!(
+            hamming(fingerprint(noisy).simhash, fingerprint(clean).simhash),
+            0
         );
     }
 
@@ -247,6 +266,27 @@ mod tests {
         assert!(fp.css_classes.contains("navbar"));
         assert!(fp.css_classes.contains("container-fluid"));
         assert!(fp.css_classes.contains("btn"));
+    }
+
+    #[test]
+    fn css_class_extraction_is_attribute_scoped() {
+        let html = r#"<p>literal class="noise"</p><div class = 'real one'>hi</div>"#;
+        let fp = fingerprint(html);
+        assert!(fp.css_classes.contains("real"));
+        assert!(fp.css_classes.contains("one"));
+        assert!(!fp.css_classes.contains("noise"));
+    }
+
+    #[test]
+    fn void_structural_tags_do_not_own_following_siblings() {
+        let html = "<html><body><main><img src='x'><p>Caption</p><hr><section>More</section></main></body></html>";
+        let fp = fingerprint(html);
+        assert!(fp.tag_bigrams.contains("main>img"));
+        assert!(fp.tag_bigrams.contains("main>p"));
+        assert!(fp.tag_bigrams.contains("main>hr"));
+        assert!(fp.tag_bigrams.contains("main>section"));
+        assert!(!fp.tag_bigrams.contains("img>p"));
+        assert!(!fp.tag_bigrams.contains("hr>section"));
     }
 
     #[test]

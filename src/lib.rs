@@ -1,6 +1,6 @@
 pub mod capture;
 pub mod config;
-pub mod html_sim;
+pub mod html_fingerprint;
 pub mod ip_to_domain;
 pub mod logger;
 pub mod paths;

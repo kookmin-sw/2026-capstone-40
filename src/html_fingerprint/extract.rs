@@ -33,6 +33,9 @@ const STRUCTURAL: &[&str] = &[
     "th",
     "td",
     "form",
+    "img",
+    "br",
+    "hr",
     "input",
     "button",
     "select",
@@ -43,6 +46,8 @@ const STRUCTURAL: &[&str] = &[
 ];
 
 const VOID_STRUCTURAL: &[&str] = &["input"];
+const SELF_CLOSING_STRUCTURAL: &[&str] = &["area", "br", "col", "embed", "hr", "img", "input"];
+const CLASS_ATTR: &[u8] = b"class";
 
 pub(crate) fn strip_noise_blocks(html: &str) -> String {
     let bytes = html.as_bytes();
@@ -114,7 +119,9 @@ pub(crate) fn extract_tag_bigrams(clean: &str) -> HashSet<String> {
                     if let Some(parent) = stack.last() {
                         bigrams.insert(format!("{parent}>{name}"));
                     }
-                    if !VOID_STRUCTURAL.contains(&name.as_str()) {
+                    if !VOID_STRUCTURAL.contains(&name.as_str())
+                        && !is_self_closing_tag(bytes, cursor)
+                    {
                         stack.push(name);
                     }
                 }
@@ -134,29 +141,64 @@ pub(crate) fn extract_css_classes(clean: &str) -> HashSet<String> {
     let mut classes = HashSet::new();
     let mut cursor = 0;
 
-    while cursor + 6 < bytes.len() {
-        if case_insensitive_eq(&bytes[cursor..cursor + 6], b"class=") {
-            cursor += 6;
-            let delimiter = match bytes.get(cursor) {
+    while cursor < bytes.len() {
+        if bytes[cursor] != b'<' {
+            cursor += 1;
+            continue;
+        }
+
+        let tag_end = skip_tag(bytes, cursor);
+        let tag = &bytes[cursor..tag_end];
+        let mut attr_cursor = 1;
+
+        while attr_cursor < tag.len() {
+            if !matches_class_attr(tag, attr_cursor) {
+                attr_cursor += 1;
+                continue;
+            }
+
+            attr_cursor += CLASS_ATTR.len();
+            while tag.get(attr_cursor).is_some_and(u8::is_ascii_whitespace) {
+                attr_cursor += 1;
+            }
+
+            if tag.get(attr_cursor) != Some(&b'=') {
+                continue;
+            }
+
+            attr_cursor += 1;
+            while tag.get(attr_cursor).is_some_and(u8::is_ascii_whitespace) {
+                attr_cursor += 1;
+            }
+
+            let delimiter = match tag.get(attr_cursor) {
                 Some(b'"') => {
-                    cursor += 1;
+                    attr_cursor += 1;
                     b'"'
                 }
                 Some(b'\'') => {
-                    cursor += 1;
+                    attr_cursor += 1;
                     b'\''
                 }
                 _ => b' ',
             };
 
-            let value_start = cursor;
-            while cursor < bytes.len() && bytes[cursor] != delimiter && bytes[cursor] != b'>' {
-                cursor += 1;
+            let value_start = attr_cursor;
+            while attr_cursor < tag.len()
+                && tag[attr_cursor] != delimiter
+                && tag[attr_cursor] != b'>'
+                && (delimiter != b' ' || !tag[attr_cursor].is_ascii_whitespace())
+            {
+                attr_cursor += 1;
             }
-            insert_class_tokens(&mut classes, &bytes[value_start..cursor]);
-        } else {
-            cursor += 1;
+            insert_class_tokens(&mut classes, &tag[value_start..attr_cursor]);
+
+            if delimiter != b' ' && tag.get(attr_cursor) == Some(&delimiter) {
+                attr_cursor += 1;
+            }
         }
+
+        cursor = tag_end;
     }
 
     classes
@@ -190,14 +232,22 @@ fn skip_comment(bytes: &[u8], cursor: usize) -> Option<usize> {
     if !is_comment {
         return None;
     }
-    find_case_insensitive(bytes, cursor + 4, b"-->").map(|pos| pos + 3)
+    Some(
+        find_case_insensitive(bytes, cursor + 4, b"-->")
+            .map(|pos| pos + 3)
+            .unwrap_or(bytes.len()),
+    )
 }
 
 fn skip_noise_tag(bytes: &[u8], cursor: usize) -> Option<usize> {
     let name = read_tag_name(bytes, cursor + 1);
     let skipped = BLOCK_SKIP.iter().find(|&&tag| tag == name)?;
     let close = format!("</{skipped}>");
-    find_case_insensitive(bytes, cursor, close.as_bytes()).map(|pos| pos + close.len())
+    Some(
+        find_case_insensitive(bytes, cursor, close.as_bytes())
+            .map(|pos| pos + close.len())
+            .unwrap_or(bytes.len()),
+    )
 }
 
 fn skip_tag(bytes: &[u8], cursor: usize) -> usize {
@@ -226,6 +276,38 @@ fn pop_to_matching_tag(stack: &mut Vec<String>, name: &str) {
     if let Some(pos) = stack.iter().rposition(|tag| tag == name) {
         stack.truncate(pos);
     }
+}
+
+fn is_self_closing_tag(bytes: &[u8], cursor: usize) -> bool {
+    let name = read_tag_name(bytes, cursor + 1);
+    if SELF_CLOSING_STRUCTURAL.contains(&name.as_str()) {
+        return true;
+    }
+
+    let tag_end = skip_tag(bytes, cursor);
+    bytes[cursor..tag_end]
+        .iter()
+        .rev()
+        .skip_while(|byte| byte.is_ascii_whitespace() || **byte == b'>')
+        .next()
+        == Some(&b'/')
+}
+
+fn matches_class_attr(tag: &[u8], cursor: usize) -> bool {
+    let attr_end = cursor + CLASS_ATTR.len();
+    if attr_end > tag.len() || !case_insensitive_eq(&tag[cursor..attr_end], CLASS_ATTR) {
+        return false;
+    }
+
+    let before = cursor.checked_sub(1).and_then(|idx| tag.get(idx));
+    let after = tag.get(attr_end);
+
+    before.is_none_or(|byte| !is_attr_name_byte(*byte))
+        && after.is_none_or(|byte| !is_attr_name_byte(*byte))
+}
+
+fn is_attr_name_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')
 }
 
 fn insert_class_tokens(classes: &mut HashSet<String>, raw: &[u8]) {
