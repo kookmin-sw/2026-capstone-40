@@ -47,6 +47,7 @@ fn run_probe(q: &ProbeQuery, config: &Config, db: &Db) -> pages::ProbeResult {
         timeout_s: config.probe.timeout_s,
         cache_path,
         cache_ttl_days: config.ip_to_domain.cache_ttl_days,
+        passive_dns: None, // probe endpoint has no live capture context
     };
 
     match lookup(&q.ip, &cfg) {

@@ -5,6 +5,7 @@ pub mod ip_to_domain;
 pub mod logger;
 pub mod paths;
 pub mod pipeline;
+pub mod prefilter;
 pub mod store;
 pub mod time;
 pub mod web;
@@ -26,18 +27,37 @@ pub fn serve(bind: String, cfg: config::Config) {
     });
 
     let cfg = Arc::new(cfg);
-    let (ip_tx, ip_rx) = std::sync::mpsc::channel();
+    let (evt_tx, evt_rx) = std::sync::mpsc::channel();
     let capture_running = Arc::new(AtomicBool::new(false));
+
+    // Passive DNS cache — shared between capture thread (writes) and workers (reads).
+    let passive_dns = ip_to_domain::PassiveDnsCache::new();
+
+    let prefilter = if cfg.prefilter.enabled {
+        match prefilter::Prefilter::load(&cfg.prefilter) {
+            Ok(pf) => {
+                log::info!("prefilter loaded ({} flow cap)", cfg.prefilter.max_flows);
+                Some(pf)
+            }
+            Err(e) => {
+                log::error!("prefilter disabled: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     let cap_cfg = cfg.capture.clone();
     let capture_running_for_thread = Arc::clone(&capture_running);
+    let passive_dns_for_capture = passive_dns.clone();
     std::thread::spawn(move || {
         capture_running_for_thread.store(true, Ordering::Release);
-        capture::run(&cap_cfg, ip_tx);
+        capture::run(&cap_cfg, evt_tx, prefilter, Some(passive_dns_for_capture));
         capture_running_for_thread.store(false, Ordering::Release);
     });
 
-    pipeline::spawn_workers(ip_rx, db.clone(), &cfg);
+    pipeline::spawn_workers(evt_rx, db.clone(), &cfg, passive_dns);
 
     web::Server::new(bind, cfg, db, capture_running)
         .run()

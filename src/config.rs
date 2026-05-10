@@ -190,7 +190,7 @@ fn default_workers() -> u32 {
     4
 }
 fn default_sources() -> Vec<String> {
-    vec!["ptr".into(), "hackertarget".into()]
+    vec!["passive-dns".into(), "ptr".into(), "hackertarget".into()]
 }
 fn default_cache_ttl_days() -> u64 {
     7
