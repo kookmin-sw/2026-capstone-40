@@ -16,6 +16,8 @@ pub struct Config {
     pub api: ApiConfig,
     #[serde(default)]
     pub ip_to_domain: IpToDomainConfig,
+    #[serde(default)]
+    pub prefilter: PrefilterConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -120,6 +122,48 @@ impl Default for IpToDomainConfig {
         }
     }
 }
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct PrefilterConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    pub model_path: Option<String>,
+    pub labels_path: Option<String>,
+    #[serde(default = "default_length_dim")]
+    pub length_dim: usize,
+    #[serde(default = "default_select_dir")]
+    pub select_dir: u8,
+    #[serde(default = "default_flow_timeout")]
+    pub flow_timeout_s: u64,
+    #[serde(default = "default_max_flows")]
+    pub max_flows: usize,
+    #[serde(default = "default_true")]
+    pub benign_skip: bool,
+    #[serde(default = "default_conf_threshold")]
+    pub conf_threshold: f32,
+}
+
+impl Default for PrefilterConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            model_path: None,
+            labels_path: None,
+            length_dim: default_length_dim(),
+            select_dir: default_select_dir(),
+            flow_timeout_s: default_flow_timeout(),
+            max_flows: default_max_flows(),
+            benign_skip: true,
+            conf_threshold: default_conf_threshold(),
+        }
+    }
+}
+
+fn default_length_dim() -> usize { 10 }
+fn default_select_dir() -> u8 { 1 }
+fn default_flow_timeout() -> u64 { 30 }
+fn default_max_flows() -> usize { 10_000 }
+fn default_conf_threshold() -> f32 { 0.5 }
 
 fn default_ip_cooldown() -> u64 {
     60
