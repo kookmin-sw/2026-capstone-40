@@ -149,6 +149,30 @@ pub fn stats(conn: &Connection) -> Stats {
     }
 }
 
+/// Counts of prefilter alert types for the dashboard panel.
+pub struct PrefilterStats {
+    pub malicious: u64,
+    pub unknown: u64,
+    pub classified: u64,
+}
+
+pub fn prefilter_stats(conn: &Connection) -> PrefilterStats {
+    let q = |t: &str| -> u64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM alerts WHERE alert_type=?1",
+            [t],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        .max(0) as u64
+    };
+    PrefilterStats {
+        malicious:  q("PREFILTER_MALICIOUS"),
+        unknown:    q("PREFILTER_UNKNOWN"),
+        classified: q("PREFILTER_CLASSIFIED"),
+    }
+}
+
 pub fn recent_alerts(conn: &Connection, limit: usize) -> Vec<Alert> {
     let mut stmt = match conn.prepare(
         "SELECT id,severity,alert_type,domain,detail,ts,acknowledged
@@ -460,9 +484,24 @@ pub fn inc_traffic_ips(conn: &Connection, ts: i64, n: i64) -> Result<()> {
     inc_bucket(conn, ts, n, 0, 0, 0)
 }
 
-/// Called by pipeline worker per domain resolved.
 pub fn inc_traffic_domains(conn: &Connection, ts: i64, n: i64) -> Result<()> {
     inc_bucket(conn, ts, 0, 0, n, 0)
+}
+
+pub fn inc_traffic_alerts(conn: &Connection, ts: i64, n: i64) -> Result<()> {
+    inc_bucket(conn, ts, 0, n, 0, 0)
+}
+
+/// Return current risk_score for a domain, or 0 if unknown.
+pub fn domain_risk(conn: &Connection, domain: &str) -> Option<u32> {
+    conn.query_row(
+        "SELECT risk_score FROM domains WHERE domain=?1",
+        [domain],
+        |r| r.get::<_, Option<i64>>(0),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s as u32)
 }
 
 fn inc_bucket(conn: &Connection, ts: i64, ips: i64, alerts: i64, domains: i64, probes: i64) -> Result<()> {

@@ -182,6 +182,17 @@ impl PipelineStatus {
 
 // ---- templates ---------------------------------------------
 
+pub struct PrefilterPanel {
+    pub malicious:  u64,
+    pub unknown:    u64,
+    pub classified: u64,
+    pub enabled:    bool,
+}
+
+impl PrefilterPanel {
+    pub fn total(&self) -> u64 { self.malicious + self.unknown + self.classified }
+}
+
 #[derive(Template)]
 #[template(path = "dashboard.html")]
 pub struct DashboardPage {
@@ -190,6 +201,7 @@ pub struct DashboardPage {
     pub stats:           DashboardStats,
     pub severity_counts: Vec<SeverityCount>,
     pub pipeline:        PipelineStatus,
+    pub prefilter:       PrefilterPanel,
     pub recent_alerts:   Vec<AlertRow>,
     pub recent_domains:  Vec<DomainRow>,
 }

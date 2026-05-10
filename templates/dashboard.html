@@ -77,26 +77,46 @@
     </div>
   </div>
 
-  {# filter decision breakdown #}
+  {# prefilter panel #}
   <div class="panel">
-    <div class="panel-header"><span class="panel-title">Filter Decisions</span></div>
+    <div class="panel-header">
+      <span class="panel-title">Prefilter</span>
+      <span class="status-chip {% if prefilter.enabled %}chip-on{% else %}chip-off{% endif %}" style="font-size:0.7rem">
+        <span class="status-dot {% if prefilter.enabled %}on{% else %}off{% endif %}"></span>
+        {% if prefilter.enabled %}Active{% else %}Disabled{% endif %}
+      </span>
+    </div>
     <div class="panel-body">
-      {% set total = pipeline.total_decisions() %}
-      {% if total == 0 %}
-        <p class="muted" style="font-size:0.85rem">No decisions yet.</p>
+      {% if !prefilter.enabled %}
+        <p class="muted" style="font-size:0.85rem">Enable in <code>capstone.toml</code>: <code>[prefilter] enabled = true</code></p>
+      {% else if prefilter.total() == 0 %}
+        <p class="muted" style="font-size:0.85rem">No flows classified yet.</p>
       {% else %}
-        <div class="decision-bar">
-          <div class="decision-skip"  style="flex:{{ pipeline.total_skip }}"></div>
-          <div class="decision-watch" style="flex:{{ pipeline.total_watch }}"></div>
-          <div class="decision-probe" style="flex:{{ pipeline.total_probe }}"></div>
-        </div>
-        <div class="decision-legend">
-          <span class="decision-skip-dot">Skip</span><span class="muted">{{ pipeline.total_skip }}</span>
-          <span class="decision-watch-dot">Watch</span><span class="muted">{{ pipeline.total_watch }}</span>
-          <span class="decision-probe-dot">Probe</span><span class="muted">{{ pipeline.total_probe }}</span>
+        <div class="signal-list">
+          <div class="signal-row">
+            <span class="badge sev-4" style="min-width:5.5rem;justify-content:center">malicious</span>
+            <div class="signal-bar-wrap">
+              <div class="signal-bar sev-4-bar" style="width:{% if prefilter.total() > 0 %}{{ prefilter.malicious * 100 / prefilter.total() }}{% else %}0{% endif %}%"></div>
+            </div>
+            <span class="signal-pts">{{ prefilter.malicious }}</span>
+          </div>
+          <div class="signal-row">
+            <span class="badge sev-2" style="min-width:5.5rem;justify-content:center">unknown</span>
+            <div class="signal-bar-wrap">
+              <div class="signal-bar sev-2-bar" style="width:{% if prefilter.total() > 0 %}{{ prefilter.unknown * 100 / prefilter.total() }}{% else %}0{% endif %}%"></div>
+            </div>
+            <span class="signal-pts">{{ prefilter.unknown }}</span>
+          </div>
+          <div class="signal-row">
+            <span class="badge sev-1" style="min-width:5.5rem;justify-content:center">classified</span>
+            <div class="signal-bar-wrap">
+              <div class="signal-bar sev-1-bar" style="width:{% if prefilter.total() > 0 %}{{ prefilter.classified * 100 / prefilter.total() }}{% else %}0{% endif %}%"></div>
+            </div>
+            <span class="signal-pts">{{ prefilter.classified }}</span>
+          </div>
         </div>
       {% endif %}
-      <div class="pipeline-rows">
+      <div class="pipeline-rows" style="margin-top:0.75rem">
         <div class="pipeline-row">
           <span class="muted">Queue depth</span>
           <strong>{{ pipeline.queue_depth }}</strong>
@@ -107,9 +127,7 @@
         </div>
         <div class="pipeline-row">
           <span class="muted">Last probe</span>
-          <strong>
-            {% if let Some(ts) = pipeline.last_probe_ts %}{{ ts|fmt_ts }}{% else %}—{% endif %}
-          </strong>
+          <strong>{% if let Some(ts) = pipeline.last_probe_ts %}{{ ts|fmt_ts }}{% else %}—{% endif %}</strong>
         </div>
       </div>
     </div>

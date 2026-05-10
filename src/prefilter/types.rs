@@ -3,6 +3,7 @@
 use std::net::IpAddr;
 use std::time::Instant;
 
+
 /// Server-side direction marker. The training extractor (`select_dir = 1`)
 /// treats `1 = server→client`. We mirror that convention.
 pub const DIR_C2S: u8 = 0;
@@ -93,4 +94,6 @@ pub struct PrefilterOutput {
     pub verdict: Verdict,
     pub typical_domains: Vec<String>,
     pub direction_guessed: bool,
+    /// IP of the server endpoint — used by pipeline for domain lookup + alert.
+    pub server_ip: IpAddr,
 }

@@ -126,6 +126,15 @@ impl Prefilter {
             let class_name = entry.map(|e| e.name.clone()).unwrap_or_else(|| format!("class_{cid}"));
             let typical_domains = entry.map(|e| e.typical_domains.clone()).unwrap_or_default();
             let verdict = self.labels.verdict(cid, conf, self.conf_threshold);
+            // Server IP: side B is server by convention when side is resolved;
+            // fall back to lower-port heuristic.
+            let server_ip = match s.server_side {
+                Side::A => s.key.a_ip,
+                Side::B => s.key.b_ip,
+                Side::Unknown => {
+                    if s.key.a_port <= s.key.b_port { s.key.a_ip } else { s.key.b_ip }
+                }
+            };
             out.push((s.key, PrefilterOutput {
                 class_id: cid,
                 class_name,
@@ -133,6 +142,7 @@ impl Prefilter {
                 verdict,
                 typical_domains,
                 direction_guessed: s.guessed,
+                server_ip,
             }));
         }
         out

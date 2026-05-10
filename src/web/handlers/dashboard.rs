@@ -16,6 +16,7 @@ pub fn handle(config: &Config, db: &Db, capture_running: &AtomicBool) -> respons
     let sev = store::severity_counts(&conn);
     let alerts = store::recent_alerts(&conn, 10);
     let domains = store::recent_domains(&conn, 10);
+    let pf_stats = store::prefilter_stats(&conn);
 
     let stats = pages::DashboardStats {
         total_domains: s.total_domains,
@@ -68,12 +69,20 @@ pub fn handle(config: &Config, db: &Db, capture_running: &AtomicBool) -> respons
         })
         .collect();
 
+    let prefilter = pages::PrefilterPanel {
+        malicious:  pf_stats.malicious,
+        unknown:    pf_stats.unknown,
+        classified: pf_stats.classified,
+        enabled:    config.prefilter.enabled,
+    };
+
     let body = pages::DashboardPage {
         page_title: "Dashboard",
         active: "dashboard",
         stats,
         severity_counts,
         pipeline,
+        prefilter,
         recent_alerts,
         recent_domains,
     }
