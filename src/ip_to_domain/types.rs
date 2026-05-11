@@ -59,6 +59,7 @@ pub struct ProviderResult {
 pub struct DomainEntry {
     pub domain: String,
     pub sources: Vec<String>,
+    pub confidence: u8,
 }
 
 #[derive(Debug, Serialize)]

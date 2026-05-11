@@ -55,6 +55,18 @@ impl Default for LookupConfig {
 
 // ── public API ────────────────────────────────────────────────────────────────
 
+pub fn clear_cache(
+    cache_path: &str,
+    ip: Option<&str>,
+) -> Result<usize, Box<dyn std::error::Error>> {
+    let cache = Cache::new(cache_path)?;
+    let removed = match ip {
+        Some(ip) => cache.clear_key(ip)?,
+        None => cache.clear_all()?,
+    };
+    Ok(removed)
+}
+
 pub fn lookup(ip: &str, config: &LookupConfig) -> Result<LookupResult, Box<dyn std::error::Error>> {
     let cache = Cache::new(&config.cache_path)?;
     let ttl_s = cache_ttl_secs(config.cache_ttl_days);
@@ -69,7 +81,7 @@ pub fn lookup(ip: &str, config: &LookupConfig) -> Result<LookupResult, Box<dyn s
                 Some(c) => c.as_provider(ip),
                 None => continue,
             },
-            "ptr"          => ptr::fetch(ip, &cache, ttl_s),
+            "ptr" => ptr::fetch(ip, &cache, ttl_s),
             "hackertarget" => hackertarget::fetch(ip, &cache, config.timeout_s, ttl_s),
             other => {
                 notes.push(format!("unknown source '{other}'"));
@@ -78,11 +90,18 @@ pub fn lookup(ip: &str, config: &LookupConfig) -> Result<LookupResult, Box<dyn s
         };
 
         if let Some(ref n) = res.note {
-            let suffix = if res.cache_stale { " (stale cache)" } else { "" };
+            let suffix = if res.cache_stale {
+                " (stale cache)"
+            } else {
+                ""
+            };
             notes.push(format!("{}: {n}{suffix}", res.provider));
         }
         for d in res.domains {
-            dom_sources.entry(d.clone()).or_default().insert(res.provider.clone());
+            dom_sources
+                .entry(d.clone())
+                .or_default()
+                .insert(res.provider.clone());
             all_domains.insert(d);
         }
     }
@@ -95,21 +114,82 @@ pub fn lookup(ip: &str, config: &LookupConfig) -> Result<LookupResult, Box<dyn s
         all_domains
     };
 
-    let mut sorted: Vec<String> = final_set.into_iter().collect();
-    sorted.sort();
+    let mut ranked: Vec<(String, Vec<String>, u8)> = final_set
+        .into_iter()
+        .map(|d| {
+            let mut srcs: Vec<_> = dom_sources.get(&d).into_iter().flatten().cloned().collect();
+            srcs.sort();
+            let confidence = confidence_for_sources(&srcs, config.verify);
+            (d, srcs, confidence)
+        })
+        .collect();
 
-    let domains = sorted.iter().map(|d| {
-        let mut srcs: Vec<_> = dom_sources.get(d).into_iter().flatten().cloned().collect();
-        srcs.sort();
-        DomainEntry { domain: d.clone(), sources: srcs }
-    }).collect();
+    ranked.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+
+    let count = ranked.len();
+    let domains = ranked
+        .into_iter()
+        .map(|(domain, sources, confidence)| DomainEntry {
+            domain,
+            sources,
+            confidence,
+        })
+        .collect();
 
     Ok(LookupResult {
         ip: ip.into(),
         sources: config.sources.clone(),
         verified: config.verify,
-        count: sorted.len(),
+        count,
         domains,
         notes,
     })
+}
+
+fn confidence_for_sources(sources: &[String], verified: bool) -> u8 {
+    let has_passive = sources.iter().any(|s| s == "passive-dns");
+    let has_ptr = sources.iter().any(|s| s == "ptr");
+    let has_reverse_ip = sources.iter().any(|s| s == "hackertarget");
+    let has_stale = sources.iter().any(|s| s.ends_with("-stale"));
+
+    let mut score: u8 = if has_passive {
+        90
+    } else if has_ptr && has_reverse_ip {
+        65
+    } else if has_reverse_ip {
+        55
+    } else if has_ptr {
+        40
+    } else {
+        25
+    };
+
+    if verified {
+        score = (score + 15).min(100);
+    }
+    if has_stale {
+        score = score.saturating_sub(25);
+    }
+    score
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn confidence_prefers_passive_dns_for_firewall_attribution() {
+        assert!(
+            confidence_for_sources(&["passive-dns".into()], false)
+                > confidence_for_sources(&["hackertarget".into(), "ptr".into()], false)
+        );
+    }
+
+    #[test]
+    fn confidence_penalizes_stale_external_cache() {
+        assert!(
+            confidence_for_sources(&["hackertarget".into()], false)
+                > confidence_for_sources(&["hackertarget-stale".into()], false)
+        );
+    }
 }

@@ -44,4 +44,53 @@ impl Cache {
             )
             .ok();
     }
+
+    pub fn clear_key(&self, key: &str) -> rusqlite::Result<usize> {
+        self.conn
+            .execute("DELETE FROM cache WHERE key=?1", params![key])
+    }
+
+    pub fn clear_all(&self) -> rusqlite::Result<usize> {
+        self.conn.execute("DELETE FROM cache", [])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_cache_path(name: &str) -> String {
+        std::env::temp_dir()
+            .join(format!("capstone-{name}-{}.sqlite3", std::process::id()))
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    #[test]
+    fn clear_key_removes_only_matching_ip() {
+        let path = temp_cache_path("clear-key");
+        let _ = std::fs::remove_file(&path);
+        let cache = Cache::new(&path).unwrap();
+        cache.put("ptr", "1.1.1.1", 1, 200, Some(b"one"));
+        cache.put("ptr", "8.8.8.8", 1, 200, Some(b"eight"));
+
+        assert_eq!(cache.clear_key("1.1.1.1").unwrap(), 1);
+        assert!(cache.get("ptr", "1.1.1.1").is_none());
+        assert!(cache.get("ptr", "8.8.8.8").is_some());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn clear_all_removes_every_provider_entry() {
+        let path = temp_cache_path("clear-all");
+        let _ = std::fs::remove_file(&path);
+        let cache = Cache::new(&path).unwrap();
+        cache.put("ptr", "1.1.1.1", 1, 200, Some(b"one"));
+        cache.put("hackertarget", "1.1.1.1", 1, 200, Some(b"one.example"));
+
+        assert_eq!(cache.clear_all().unwrap(), 2);
+        assert!(cache.get("ptr", "1.1.1.1").is_none());
+        assert!(cache.get("hackertarget", "1.1.1.1").is_none());
+        let _ = std::fs::remove_file(&path);
+    }
 }

@@ -20,7 +20,11 @@ pub fn fetch(ip: &str, cache: &Cache, timeout_s: f64, ttl_s: i64) -> ProviderRes
                 .filter(|l| looks_like_domain(l))
                 .map(norm_domain)
                 .collect();
-            return ProviderResult { provider: "hackertarget".into(), domains, ..Default::default() };
+            return ProviderResult {
+                provider: "hackertarget".into(),
+                domains,
+                ..Default::default()
+            };
         }
     }
 
@@ -64,7 +68,11 @@ pub fn fetch(ip: &str, cache: &Cache, timeout_s: f64, ttl_s: i64) -> ProviderRes
                 200,
                 Some(sorted_vec(&domains).join("\n").as_bytes()),
             );
-            ProviderResult { provider: "hackertarget".into(), domains, ..Default::default() }
+            ProviderResult {
+                provider: "hackertarget".into(),
+                domains,
+                ..Default::default()
+            }
         }
         Err(e) => stale_or_empty(
             "hackertarget",
@@ -86,11 +94,15 @@ fn stale_or_empty(
             .map(norm_domain)
             .collect();
         return ProviderResult {
-            provider: provider.into(),
+            provider: format!("{provider}-stale"),
             domains,
             note: Some(note),
             cache_stale: true,
         };
     }
-    ProviderResult { provider: provider.into(), note: Some(note), ..Default::default() }
+    ProviderResult {
+        provider: provider.into(),
+        note: Some(note),
+        ..Default::default()
+    }
 }
