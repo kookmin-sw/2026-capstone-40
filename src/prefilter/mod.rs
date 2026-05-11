@@ -94,12 +94,18 @@ impl Prefilter {
             });
         }
 
+        let skip_ips: Vec<std::net::IpAddr> = cfg.skip_ips.iter()
+            .filter_map(|s| s.parse().ok())
+            .collect();
+
         Ok(Self {
             table: FlowTable::new(
                 cfg.length_dim,
                 cfg.select_dir,
                 Duration::from_secs(cfg.flow_timeout_s),
                 cfg.max_flows,
+                cfg.skip_ports.clone(),
+                skip_ips,
             ),
             booster,
             labels,

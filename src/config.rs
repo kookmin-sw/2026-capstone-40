@@ -141,6 +141,12 @@ pub struct PrefilterConfig {
     pub benign_skip: bool,
     #[serde(default = "default_conf_threshold")]
     pub conf_threshold: f32,
+    /// TCP server ports to skip (not trained on these). Configurable so no hardcoding in binary.
+    #[serde(default = "default_skip_ports")]
+    pub skip_ports: Vec<u16>,
+    /// Server IPs to skip (e.g. DNS resolvers whose DoH traffic is not training data).
+    #[serde(default)]
+    pub skip_ips: Vec<String>,
 }
 
 impl Default for PrefilterConfig {
@@ -155,8 +161,16 @@ impl Default for PrefilterConfig {
             max_flows: default_max_flows(),
             benign_skip: true,
             conf_threshold: default_conf_threshold(),
+            skip_ports: default_skip_ports(),
+            skip_ips: vec![],
         }
     }
+}
+
+fn default_skip_ports() -> Vec<u16> {
+    // Non-web service ports — prefilter is trained on HTTP/HTTPS streaming traffic.
+    // Override in capstone.toml [prefilter] skip_ports = [...] if needed.
+    vec![22, 23, 25, 53, 110, 123, 143, 389, 3478, 5353]
 }
 
 fn default_length_dim() -> usize { 10 }

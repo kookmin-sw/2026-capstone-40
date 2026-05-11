@@ -16,17 +16,20 @@ pub struct FlowTable {
     pub select_dir: u8,
     pub timeout: Duration,
     pub max_flows: usize,
+    skip_ports: Vec<u16>,
+    skip_ips: Vec<std::net::IpAddr>,
 }
 
 impl FlowTable {
-    pub fn new(ready_dim: usize, select_dir: u8, timeout: Duration, max_flows: usize) -> Self {
-        Self {
-            flows: HashMap::new(),
-            ready_dim,
-            select_dir,
-            timeout,
-            max_flows,
-        }
+    pub fn new(
+        ready_dim: usize,
+        select_dir: u8,
+        timeout: Duration,
+        max_flows: usize,
+        skip_ports: Vec<u16>,
+        skip_ips: Vec<std::net::IpAddr>,
+    ) -> Self {
+        Self { flows: HashMap::new(), ready_dim, select_dir, timeout, max_flows, skip_ports, skip_ips }
     }
 
     pub fn len(&self) -> usize {
@@ -35,7 +38,14 @@ impl FlowTable {
 
     pub fn ingest(&mut self, pkt: &ParsedPkt) {
         if pkt.proto != 6 {
-            return; // TCP only
+            return;
+        }
+        let server_port = pkt.sport.min(pkt.dport);
+        if self.skip_ports.contains(&server_port) {
+            return;
+        }
+        if self.skip_ips.contains(&pkt.src) || self.skip_ips.contains(&pkt.dst) {
+            return;
         }
 
         let key = pkt.key();
@@ -176,7 +186,7 @@ mod tests {
 
     #[test]
     fn syn_resolves_server_side() {
-        let mut t = FlowTable::new(3, DIR_S2C, Duration::from_secs(30), 100);
+        let mut t = FlowTable::new(3, DIR_S2C, Duration::from_secs(30), 100, vec![], vec![]);
         let now = Instant::now();
         let cli = ipv4("10.0.0.1");
         let srv = ipv4("8.8.8.8");
@@ -204,7 +214,7 @@ mod tests {
 
     #[test]
     fn aged_flow_drains_even_underfilled() {
-        let mut t = FlowTable::new(10, DIR_S2C, Duration::from_millis(10), 100);
+        let mut t = FlowTable::new(10, DIR_S2C, Duration::from_millis(10), 100, vec![], vec![]);
         let now = Instant::now();
         let cli = ipv4("10.0.0.1");
         let srv = ipv4("8.8.8.8");
@@ -223,7 +233,7 @@ mod tests {
 
     #[test]
     fn lru_evicts_when_full() {
-        let mut t = FlowTable::new(3, DIR_S2C, Duration::from_secs(30), 2);
+        let mut t = FlowTable::new(3, DIR_S2C, Duration::from_secs(30), 2, vec![], vec![]);
         let t0 = Instant::now();
         let t1 = t0 + Duration::from_millis(10);
         let t2 = t0 + Duration::from_millis(20);

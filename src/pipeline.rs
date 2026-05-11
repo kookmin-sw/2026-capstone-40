@@ -98,6 +98,11 @@ fn handle_ip(ip: IpAddr, db: &Db, lookup_cfg: &LookupConfig) {
 }
 
 fn handle_flow(out: PrefilterOutput, db: &Db, lookup_cfg: &LookupConfig) {
+    // Skip private/loopback server IPs — only care about external traffic.
+    if is_private_ip(out.server_ip) {
+        return;
+    }
+
     let ip_str = out.server_ip.to_string();
     let now = now_secs();
 
@@ -112,27 +117,24 @@ fn handle_flow(out: PrefilterOutput, db: &Db, lookup_cfg: &LookupConfig) {
             }
             r.domains[0].domain.clone()
         }
-        _ => ip_str.clone(), // fall back to raw IP as domain key
+        _ => ip_str.clone(),
     };
 
     let (severity, alert_type, risk_delta) = match out.verdict {
-        Verdict::Malicious => (4u8, "PREFILTER_MALICIOUS", 60u32),
-        Verdict::Unknown   => (2u8, "PREFILTER_UNKNOWN",   15u32),
-        Verdict::Known     => (1u8, "PREFILTER_CLASSIFIED", 0u32),
-        Verdict::Benign    => return, // benign_skip should have dropped these
+        Verdict::Malicious => (4u8, "PREFILTER_MALICIOUS",  60u32),
+        Verdict::Unknown   => (2u8, "PREFILTER_UNKNOWN",    15u32),
+        Verdict::Known     => (1u8, "PREFILTER_CLASSIFIED",  0u32),
+        Verdict::Benign    => return,
     };
 
     let detail = format!(
-        "class={} conf={:.0}%{}",
+        "→ {} ({:.0}%{})",
         out.class_name,
         out.confidence * 100.0,
-        if out.direction_guessed { " [dir?]" } else { "" },
+        if out.direction_guessed { " ·dir?" } else { "" },
     );
 
-    log::info!(
-        "prefilter {} sev={} {} → {} ({})",
-        alert_type, severity, ip_str, domain, detail
-    );
+    log::info!("prefilter {} {} → {} {}", alert_type, ip_str, domain, detail);
 
     let conn = match db.lock() {
         Ok(c) => c,
@@ -142,7 +144,6 @@ fn handle_flow(out: PrefilterOutput, db: &Db, lookup_cfg: &LookupConfig) {
     store::upsert_domain(&conn, &domain, &ip_str, now).ok();
 
     if risk_delta > 0 {
-        // Read current score, add delta, cap at 100.
         let current = store::domain_risk(&conn, &domain).unwrap_or(0);
         let new_score = (current + risk_delta).min(100);
         let decision = if new_score >= 60 { "probe" } else if new_score >= 30 { "watch" } else { "skip" };
@@ -152,3 +153,25 @@ fn handle_flow(out: PrefilterOutput, db: &Db, lookup_cfg: &LookupConfig) {
     store::insert_alert(&conn, &domain, severity, alert_type, Some(detail.as_str()), now).ok();
     store::inc_traffic_alerts(&conn, now, 1).ok();
 }
+
+fn is_private_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(a) => {
+            let o = a.octets();
+            o[0] == 10
+                || (o[0] == 172 && (16..=31).contains(&o[1]))
+                || (o[0] == 192 && o[1] == 168)
+                || o[0] == 127
+                || (o[0] == 169 && o[1] == 254)
+                || o[0] >= 224
+        }
+        IpAddr::V6(a) => {
+            let b = a.octets();
+            b == [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1]
+                || (b[0] == 0xfe && (b[1] & 0xc0) == 0x80)
+                || b[0] == 0xff
+                || (b[0] & 0xfe) == 0xfc
+        }
+    }
+}
+

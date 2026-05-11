@@ -77,6 +77,15 @@ impl AlertRow {
             1 => "info", 2 => "low", 3 => "medium", 4 => "high", 5 => "critical", _ => "?",
         }
     }
+
+    pub fn type_label(&self) -> &str {
+        match self.alert_type.as_str() {
+            "PREFILTER_MALICIOUS"  => "ARI: malicious",
+            "PREFILTER_UNKNOWN"    => "ARI: low conf",
+            "PREFILTER_CLASSIFIED" => "ARI: classified",
+            other                  => other,
+        }
+    }
 }
 
 pub struct DomainRow {
