@@ -1,43 +1,116 @@
 # 아키텍처
 
-로컬 모니터링 파이프라인과 서버 렌더링 방식의 Rust 인터페이스를 중심으로 구성됩니다.
+이 시스템은 local monitoring pipeline과 server-side rendering 방식의 Rust interface를 중심으로 구성됩니다.
 
-## 런타임 구성 요소
+## 전체 파이프라인
 
-| 구성 요소 | 역할 |
-| --- | --- |
-| Capture | 실시간 트래픽 또는 오프라인 패킷 캡처를 읽고 네트워크 관찰 정보를 추출합니다. |
-| IP-to-domain lookup | PTR 및 외부 조회 소스를 사용해 관찰된 IP를 후보 도메인으로 매핑합니다. |
-| Filter | 설정 가능한 임계값을 기준으로 대상을 `skip`, `watch`, `probe`로 분류합니다. |
-| Probe | 더 깊은 분석이 필요한 대상의 메타데이터를 수집하고 기록합니다. |
-| Store | 도메인 이력, 알림, 파이프라인 상태, 프로브 결과를 SQLite에 저장합니다. |
-| Frontend | 대시보드, 알림, 도메인 목록, 도메인 상세, 차트, 프로브 페이지를 렌더링합니다. |
+```
+[라이브 NIC / .pcap]
+        │
+        ▼
+  packet_capture
+        │
+        ├──→ passive_dns.ingest_frame()    ← UDP/53 packet parsing, IP→domain cache 구축
+        │
+        ▼ (TCP만)
+  prefilter (ARI)
+        │  5-tuple 단위 flow 누적 → ARI feature 추출 → XGBoost 분류
+        │
+        ├─ Benign (high confidence) → drop (benign_skip 설정 시)
+        ├─ Known (high confidence)  → alert sev-1 + risk +0
+        ├─ Unknown (low confidence) → alert sev-2 + risk +15
+        └─ Malicious                → alert sev-4 + risk +60
+        │
+        ▼
+  ip_to_domain lookup
+        │  Passive DNS cache → PTR → HackerTarget 순서
+        │
+        ▼
+  passive_filter           ← 계획됨
+        │  domain heuristic signal + prefilter signal → risk score
+        │  SKIP / WATCH / PROBE decision
+        │
+        ▼ (PROBE만)
+  active_probe             ← 계획됨
+  fingerprint / detector   ← 계획됨
+        │
+        ▼
+  SQLite store ←→ web dashboard (Askama SSR)
+```
 
-## Rust 스택
+## Runtime thread 구조
 
-| 크레이트 | 용도 |
-| --- | --- |
+| Thread | 역할 |
+|---|---|
+| capture thread | pcap loop, packet parsing, prefilter ingest, Passive DNS ingest |
+| N worker threads | IP→domain lookup, domain risk 평가, DB 기록 |
+| API thread | tiny_http loop, SSR page 제공 |
+
+capture thread와 worker thread는 `PassiveDnsCache` (`Arc<RwLock<HashMap>>`)를 공유합니다. capture thread가 쓰고, worker thread는 lookup 과정에서 읽습니다.
+
+## Prefilter (ARI) 상세
+
+ARI는 encrypted traffic classification algorithm입니다. reference implementation은 `utils/ARI-ACK-guided-Reverse-Inference-main/`에 있습니다.
+
+**Feature extraction (Python `core/utils.py::feature_extraction_ari` 1:1 port):**
+
+1. flow에서 `select_dir` 방향(기본: server→client) packet만 추출
+2. 첫 `dim`개 packet의 payload length → length subvector
+3. 같은 packet들의 TCP ACK number delta 계산: `Δᵢ = -(ACKᵢ - ACKᵢ₋₁)` (양수이고 ≤ 100,000인 경우)
+4. 두 값을 이어 붙여 `[length dim개 | ACK delta dim개]` 크기의 `2×dim` feature vector 생성
+
+**XGBoost runtime (pure Rust):**
+- Python에서 학습한 뒤 `model.save_model("prefilter.json")`으로 export
+- Rust에서 native JSON parsing + tree walk로 직접 inference
+- C library dependency 없이 `serde_json` 재사용
+- XGBoost 3.x의 class별 `base_score` string vector format 처리
+
+**Flow accumulation:**
+- 5-tuple key로 `FlowTable`에서 packet buffering
+- SYN을 관찰하면 server 방향을 결정하고, 관찰하지 못한 경우 low-port heuristic 사용
+- `select_dir` 방향으로 `dim`개 packet이 쌓이면 분류 후 drain
+- LRU eviction (`max_flows`), timeout eviction (`flow_timeout_s`)
+
+## Passive DNS 상세
+
+ECH(Encrypted Client Hello) 도입으로 SNI 추출이 불가능해지는 환경에 대응합니다.
+
+- capture thread가 모든 raw frame을 `PassiveDnsCache::ingest_frame()`에 전달
+- UDP port 53 response에서 RFC 1035 wire format parsing (compression pointer 지원)
+- A/AAAA record에서 (IP, domain, TTL) 추출
+- TTL 기반 expiration (30초~3600초 clamp)
+- `ip_to_domain::lookup()`에서 PTR보다 먼저 lookup
+
+## Rust stack
+
+| Crate | 용도 |
+|---|---|
 | `tiny_http` | 로컬 HTTP 서버 |
-| `askama` | HTML 템플릿 렌더링 |
-| `rusqlite` | SQLite 상태 저장 |
-| `serde` / `serde_json` / `toml` | 설정 및 구조화된 데이터 처리 |
-| `ureq` | 프로브와 조회 유틸리티의 HTTP 호출 |
+| `askama` | compile-time HTML template (SSR, JS 없음) |
+| `rusqlite` | SQLite state store (WAL mode) |
+| `serde` / `serde_json` / `toml` | config, XGBoost JSON, structured data |
+| `ureq` | HTTP lookup + probe |
+| `pcap` | live NIC + PCAP file |
+| `dns-lookup` | PTR reverse DNS |
+| `log` | logging |
 
-## 데이터 흐름
+총 9개 crate를 사용합니다. XGBoost runtime은 별도 crate 없이 `serde_json`을 재사용합니다.
 
-1. Capture가 네트워크 인터페이스 또는 `.pcap`에서 트래픽을 관찰합니다.
-2. 관찰된 IP가 조회 및 필터링 단계로 전달됩니다.
-3. 역방향 조회 소스가 후보 도메인을 생성합니다.
-4. 위험도 점수가 `skip`, `watch`, `probe` 결정을 부여합니다.
-5. Probe 작업이 메타데이터와 스냅샷 증거를 기록합니다.
-6. 대시보드가 최근 도메인, 알림, 심각도 집계, 파이프라인 상태를 표시합니다.
+## Training pipeline
 
-## 제공 인터페이스
-
-| 화면 | 제공 정보 |
-| --- | --- |
-| Dashboard | 현재 집계, 알림 심각도 분포, 최근 알림, 최근 도메인, 파이프라인 상태 |
-| Alerts | 심각도, 유형, 도메인, 상세 정보, 타임스탬프, 확인 상태 |
-| Domains | 위험도 점수, 결정, IP 목록, 마지막 관찰 시각, 알림 수 |
-| Domain detail | IP 이력, 위험도 등급, 알림 이력, 신호, 스냅샷 |
-| Probe | 소스 선택과 선택적 검증을 포함한 역방향 IP 조회 |
+```
+scripts/main.py all --target-flows 300 --max-visits 50
+  │
+  ├─ capture  Playwright stealth browser (DoH 비활성화)
+  │           URL별 target flow 수에 도달할 때까지 자동 반복 방문
+  │           site별 별도 pcap file (label = site domain)
+  │
+  ├─ extract  private IP / CGNAT / DNS resolver IP filtering
+  │           SPLT-Data, Direction-Data, Ack-Data, Label(integer) column 생성
+  │
+  ├─ train    inverse-frequency sample weight로 class imbalance 보정
+  │           XGBoost multi:softprob, 100 trees, max_depth 10
+  │
+  └─ export   prefilter.json (native JSON) + prefilter_labels.toml
+              → ~/.local/share/capstone/
+```

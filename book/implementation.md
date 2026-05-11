@@ -1,58 +1,122 @@
 # 구현
 
-완성된 시스템은 로컬 모니터링 파이프라인과 Rust로 렌더링되는 조사 인터페이스로 구성됩니다.
+## 구현된 구성 요소
 
-## 캡처 및 저장
+### Packet capture (`src/capture.rs`)
 
-실시간 트래픽 또는 오프라인 `.pcap` 입력을 읽고, 유용한 관찰 정보를 정규화한 뒤 SQLite에 저장합니다.
+live NIC 또는 offline `.pcap` file에서 traffic을 읽고 TCP flow를 파싱합니다.
 
-- 설정 가능한 캡처 소스 (실시간 인터페이스 또는 `.pcap`)
-- IP 재처리 대기 시간과 사설 주소 필터링
-- 도메인 및 IP 관찰 정보 저장
-- 대시보드에서 확인 가능한 파이프라인 상태
+- Ethernet → IPv4/IPv6 → TCP 전체 파싱 (VLAN 태그 지원)
+- TCP payload length, ACK number, flag 추출
+- 모든 raw frame을 Passive DNS cache로 전달
+- TCP packet을 prefilter flow table로 전달
+- 500ms drain 주기로 분류된 flow를 pipeline에 전달
+- IP cooldown 중복 제거, private address filtering
 
-## 능동 프로브 및 스냅샷
+### ARI prefilter (`src/prefilter/`)
 
-설정된 위험도 임계값을 넘는 대상은 프로브되어, 분석자가 원시 트래픽뿐 아니라 도메인 기반 증거를 검토할 수 있습니다.
+encrypted traffic flow를 app class로 분류하는 XGBoost classifier입니다.
 
-- HTML 가져오기와 HTTP 메타데이터 수집
-- 리다이렉트 체인 기록
-- 설정된 경우 headless Chromium을 통한 스크린샷 지원
-- 핑거프린팅을 위한 asset 및 favicon 수집
-- 스냅샷 저장 및 도메인 상세 증거 이력
+**모듈 구조:**
 
-## 필터 및 점수화
+| 파일 | 역할 |
+|---|---|
+| `flow_table.rs` | 5-tuple key 기반 flow accumulator. SYN 기반 server direction 결정, LRU eviction |
+| `features.rs` | ARI feature extraction (Python `core/utils.py` 1:1 port). inverse ACK delta와 edge case까지 맞춤 |
+| `model.rs` | XGBoost native JSON parser + tree-walk inference. numerically stable softmax. XGBoost 3.x `base_score` 처리 |
+| `labels.rs` | TOML class table. `kind = benign/known/malicious` + `typical_domains` |
+| `types.rs` | `FlowKey`, `ParsedPkt`, `FlowState`, `Verdict`, `PrefilterOutput` |
+| `mod.rs` | `Prefilter::load()`, `ingest()`, `drain_classified()` |
 
-명확한 임계값과 위험도 등급을 사용해 관찰된 도메인을 분류합니다.
+**검증:** `tests/prefilter_golden.rs` — 33개 feature extraction case와 50개 `predict_proba` case를 Python reference와 비교해 1e-4 오차 이내로 검증합니다.
 
-| 점수 범위 | 결정 |
-| --- | --- |
-| 30 미만 | `skip` |
-| 30 이상 60 이하 | `watch` |
-| 60 초과 | `probe` |
+**설정 (하드코딩 없음):**
+```toml
+[prefilter]
+skip_ports = [22, 23, 25, 53, ...]   # 분류 제외 포트
+skip_ips   = ["8.8.8.8", "1.1.1.1"] # 분류 제외 IP
+conf_threshold = 0.5                  # Unknown 판정 임계값
+```
 
-점수 입력 신호:
+### Passive DNS (`src/ip_to_domain/passive_dns.rs`)
 
-- known-bad 지표
-- 의심스러운 TLD
-- 도메인 엔트로피
-- typosquatting 거리
-- homograph 신호
-- fast-flux 동작
-- 새로 관찰된 도메인 (newly observed domain)
+UDP/53 DNS response를 wire에서 직접 parse해 IP→domain mapping을 실시간으로 구축합니다.
 
-구현된 동작:
+- RFC 1035 wire format parser (compression pointer, A/AAAA record 지원), pure Rust
+- capture thread(write) ↔ worker thread(read)가 `Arc<RwLock<HashMap>>` 공유
+- TTL 기반 automatic expiration
+- `ip_to_domain::lookup()`에서 PTR보다 먼저 조회되는 `passive-dns` source
 
-- 도메인 상세 페이지의 신호 행
-- 설정 가능한 `watch` 및 `probe` 임계값
-- 낮음 / 중간 / 높음 위험도 등급
-- 우선순위가 높은 결과에 대한 알림 생성
+### IP→domain lookup (`src/ip_to_domain/`)
 
-## 대시보드 및 검토
+provider chain을 module 단위로 나누어 구성했습니다.
 
-검토자에게 간결한 운영 화면을 제공하고, 요약 지표를 도메인 및 알림 상세와 연결합니다.
+```
+passive-dns → ptr → hackertarget
+```
 
-- 활성 알림 검토
-- 도메인 목록 및 심각도 분포
-- 프로브 이력
-- 확인 처리 흐름
+| 모듈 | 역할 |
+|---|---|
+| `passive_dns.rs` | live DNS sniffing cache |
+| `ptr.rs` | OS resolver reverse PTR lookup, SQLite cache |
+| `hackertarget.rs` | HackerTarget reverse IP API, 1초 throttling |
+| `verify.rs` | Cloudflare DoH forward verification |
+| `cache.rs` | SQLite response cache |
+
+### Alert 및 risk scoring
+
+prefilter classification 결과를 즉시 DB alert로 변환합니다.
+
+| Verdict | Severity | Alert type | Risk |
+|---|---|---|---|
+| Malicious | 4 (high) | PREFILTER_MALICIOUS | +60 |
+| Unknown | 2 (low) | PREFILTER_UNKNOWN | +15 |
+| Known | 1 (info) | PREFILTER_CLASSIFIED | +0 |
+| Benign | — | (drop) | — |
+
+### Web dashboard (`src/web/`)
+
+JavaScript 없는 server-side rendering dashboard입니다. Askama compile-time template을 사용합니다.
+
+**Prefilter panel:**
+- 활성화/비활성화 상태 표시
+- malicious / unknown / classified flow 비율 bar chart
+- DB 크기, queue depth, 마지막 probe 시각
+
+**Alert type label:**
+- `PREFILTER_MALICIOUS` → "ARI: malicious"
+- `PREFILTER_UNKNOWN` → "ARI: low conf"
+- `PREFILTER_CLASSIFIED` → "ARI: classified"
+
+### Training pipeline (`scripts/main.py`)
+
+단일 command로 전체 pipeline을 실행합니다.
+
+```bash
+uv run --project scripts python3 scripts/main.py all \
+  --target-flows 300 \
+  --max-visits 50
+```
+
+**단계:**
+
+| Step | 설명 |
+|---|---|
+| `capture` | Playwright stealth Chromium으로 URL 방문, site별 pcap 저장. target flow 수에 도달할 때까지 자동 반복 |
+| `extract` | pcap → ARI format parquet. private IP / DNS resolver IP / non-web port filtering |
+| `train` | inverse-frequency sample weight로 class imbalance 보정. XGBoost multi:softprob |
+| `export` | `prefilter.json` + `prefilter_labels.toml` → `~/.local/share/capstone/` |
+
+**Adaptive capture:**
+- `--target-flows N`: 각 site의 pcap에 N개 TCP flow가 쌓일 때까지 방문 반복
+- flow를 많이 생성하는 site는 적게, 적게 생성하는 site는 많이 방문해 class balance를 맞춤
+
+## 계획된 구성 요소
+
+| 구성 요소 | 상태 |
+|---|---|
+| `passive_filter.rs` — domain heuristic scoring | ⬜ |
+| `active_probe.rs` — HTML 수집, screenshot, redirect chain | ⬜ |
+| `fingerprint.rs` — SHA-256 hash, content signal | ⬜ |
+| `detector.rs` — diff 기반 alert 생성 | ⬜ |
+| known_bad / Tranco import | ⬜ |

@@ -1,28 +1,39 @@
 # 데모
 
-트래픽 캡처부터 도메인 검토까지 이어지는 조사 흐름을 보여줍니다.
+traffic capture부터 ARI prefilter classification, domain risk 평가까지 이어지는 전체 흐름을 보여줍니다.
 
-## 진행 순서
+## 시연 시나리오
 
-1. 캡처 소스 또는 준비된 `.pcap`으로 시작합니다.
-2. 대시보드에서 도메인 수, 활성 알림, 캡처된 IP, 프로브 실행 수를 확인합니다.
-3. 도메인 목록을 열고 위험도 점수를 비교합니다.
-4. 도메인 상세 페이지에서 IP 이력과 알림을 확인합니다.
-5. IP 프로브를 실행하고 소스 선택과 검증 옵션이 결과에 미치는 영향을 설명합니다.
-6. 알림을 확인 처리하여 검토 흐름을 마무리합니다.
+### 1. Training pipeline
 
-## 시연 자료
+```bash
+# 대상 URL 목록으로 traffic capture → train → model export
+uv run --project scripts python3 scripts/main.py all \
+  --target-flows 300 --max-visits 50
+```
 
-발표 시점에 다음 자료가 추가됩니다:
+- Playwright stealth Chromium이 각 URL을 방문하며 pcap 수집
+- site별 target flow 수에 도달할 때까지 자동 반복 방문
+- inverse-frequency sample weight로 class imbalance 자동 보정
+- 학습된 XGBoost model을 native JSON으로 export해 Rust runtime에 적용
 
-- 대시보드 / 도메인 목록 / 도메인 상세 / 프로브 결과 스크린샷
-- 전체 흐름을 보여주는 짧은 시연 영상
+### 2. Live monitoring
 
-## 평가 관점
+```bash
+sudo ./target/release/capstone serve
+```
 
-파이프라인이 수동 분류 작업을 얼마나 줄이는지로 평가할 수 있습니다:
+dashboard에서 확인할 수 있는 항목:
 
-- 원시 IP 관찰 중 몇 개가 후보 도메인으로 변환되는가?
-- 수동 검토 전에 몇 개의 후보가 제외되는가?
-- 높은 위험도 점수가 실제로 유용한 프로브 증거를 얼마나 자주 생성하는가?
-- 검토자가 알림에서 도메인 맥락까지 얼마나 빠르게 이동할 수 있는가?
+- **Prefilter panel**: 분류된 flow 수 (malicious / unknown / classified 비율)
+- **Alerts**: ARI classification type ("ARI: malicious", "ARI: low conf")과 confidence
+- **Domain list**: prefilter signal로 상승한 risk score
+
+### 3. Traffic generation (demo용)
+
+```bash
+cd utils/traffic_capture
+uv run python3 gen_traffic.py --loops 3 --dwell 15
+```
+
+`page_list.txt`의 URL을 반복 방문해 prefilter가 분류할 traffic을 생성합니다.
