@@ -6,9 +6,11 @@ pub enum Route {
     Alerts { show_acked: bool },
     Domains,
     Domain(String),
+    Tracked,
     Probe(Option<ProbeQuery>),
     AckAlert(i64),
     Chart(String),
+    RiskChart(String),
     StaticFile(String),
     NotFound,
 }
@@ -42,6 +44,9 @@ impl Route {
             (tiny_http::Method::Get, ["domains", domain]) =>
                 Route::Domain(url_decode(domain)),
 
+            (tiny_http::Method::Get, ["tracked"]) =>
+                Route::Tracked,
+
             (tiny_http::Method::Get, ["probe"]) =>
                 Route::Probe(parse_probe_query(query)),
 
@@ -50,6 +55,9 @@ impl Route {
 
             (tiny_http::Method::Get, ["chart", name]) =>
                 Route::Chart((*name).to_string()),
+
+            (tiny_http::Method::Get, ["chart", "risk", domain]) =>
+                Route::RiskChart(url_decode(domain)),
 
             (tiny_http::Method::Get, [file]) if is_static(file) =>
                 Route::StaticFile((*file).to_string()),

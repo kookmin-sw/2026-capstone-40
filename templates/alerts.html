@@ -21,20 +21,43 @@
   {% else %}
     <table>
       <thead><tr>
-        <th>Severity</th>
-        <th>Type</th>
+        <th>Sev</th>
         <th>Domain</th>
-        <th>Detail</th>
+        <th>Predicted class</th>
+        <th title="ARI confidence. mid-flow = no SYN seen, direction guessed.">Conf</th>
+        <th title="HTML similarity vs reference baseline">Probe</th>
         <th>Time</th>
         <th></th>
       </tr></thead>
       <tbody>
         {% for a in alerts %}
-        <tr>
+        <tr {% if a.acknowledged %}style="opacity:0.45"{% endif %}>
           <td><span class="badge sev-{{ a.severity }}">{{ a.severity_label() }}</span></td>
-          <td><code>{{ a.type_label() }}</code></td>
           <td><a href="/domains/{{ a.domain|urlencode }}">{{ a.domain }}</a></td>
-          <td class="muted">{{ a.detail|default("") }}</td>
+          <td>
+            {% if let Some(cls) = a.predicted_class() %}
+              <code style="font-size:0.8rem">{{ cls }}</code>
+            {% else %}
+              <code class="muted">{{ a.type_label() }}</code>
+            {% endif %}
+          </td>
+          <td style="white-space:nowrap">
+            {% if let Some(pct) = a.confidence_pct() %}
+              <span class="{{ a.conf_class() }}" style="font-weight:600;font-family:var(--mono);font-size:0.82rem">{{ pct }}%</span>
+              {% if a.dir_guessed() %}
+                <span class="dir-tag" title="Capture started mid-flow — no TCP SYN seen, direction guessed by port">mid-flow</span>
+              {% endif %}
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if let Some(pl) = a.probe_label() %}
+              <span class="probe-tag probe-{{ pl|lower }}">{{ pl }}{% if let Some(d) = a.probe_dist() %} ({{ d }}){% endif %}</span>
+            {% else %}
+              <span class="muted" style="font-size:0.78rem">—</span>
+            {% endif %}
+          </td>
           <td class="muted mono">{{ a.ts|fmt_ts }}</td>
           <td>
             {% if a.acknowledged %}

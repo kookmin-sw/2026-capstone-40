@@ -70,10 +70,11 @@ pub fn handle(config: &Config, db: &Db, capture_running: &AtomicBool) -> respons
         .collect();
 
     let prefilter = pages::PrefilterPanel {
-        malicious:  pf_stats.malicious,
-        unknown:    pf_stats.unknown,
-        classified: pf_stats.classified,
-        enabled:    config.prefilter.enabled,
+        malicious:      pf_stats.malicious,
+        unknown:        pf_stats.unknown,
+        classified:     pf_stats.classified,
+        enabled:        config.prefilter.enabled,
+        conf_threshold: (config.prefilter.conf_threshold * 100.0).round() as u8,
     };
 
     let body = pages::DashboardPage {

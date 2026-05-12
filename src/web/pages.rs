@@ -86,6 +86,54 @@ impl AlertRow {
             other                  => other,
         }
     }
+
+    /// Extract "class_name" from "→ class_name (…)"
+    pub fn predicted_class(&self) -> Option<&str> {
+        let d = self.detail.as_deref()?.strip_prefix("→ ")?;
+        let end = d.find(" (")?;
+        Some(&d[..end])
+    }
+
+    /// Extract confidence 0–100 from "(85%…)"
+    pub fn confidence_pct(&self) -> Option<u8> {
+        let d = self.detail.as_deref()?;
+        let start = d.find('(')? + 1;
+        let rest = &d[start..];
+        let end = rest.find('%')?;
+        rest[..end].trim().parse().ok()
+    }
+
+    pub fn dir_guessed(&self) -> bool {
+        self.detail.as_deref().map_or(false, |d| d.contains("·dir?") || d.contains("·mid-flow"))
+    }
+
+    /// "EXACT" / "HIGH" / "MODERATE" / "no-match" / None
+    pub fn probe_label(&self) -> Option<&'static str> {
+        let d = self.detail.as_deref()?;
+        if d.contains("[EXACTmatch")     { return Some("EXACT"); }
+        if d.contains("[HIGHmatch")      { return Some("HIGH"); }
+        if d.contains("[MODERATEmatch")  { return Some("MODERATE"); }
+        if d.contains("[no HTML match]") { return Some("no-match"); }
+        None
+    }
+
+    /// Extract hamming distance from "[EXACTmatch dist=0 ...]" → Some(0)
+    pub fn probe_dist(&self) -> Option<u32> {
+        let d = self.detail.as_deref()?;
+        let start = d.find("dist=")? + 5;
+        let rest = &d[start..];
+        let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+        rest[..end].parse().ok()
+    }
+
+    pub fn conf_class(&self) -> &'static str {
+        match self.confidence_pct() {
+            Some(c) if c >= 90 => "conf-crit",
+            Some(c) if c >= 75 => "conf-high",
+            Some(c) if c >= 60 => "conf-med",
+            _                  => "conf-low",
+        }
+    }
 }
 
 pub struct DomainRow {
@@ -192,10 +240,11 @@ impl PipelineStatus {
 // ---- templates ---------------------------------------------
 
 pub struct PrefilterPanel {
-    pub malicious:  u64,
-    pub unknown:    u64,
-    pub classified: u64,
-    pub enabled:    bool,
+    pub malicious:      u64,
+    pub unknown:        u64,
+    pub classified:     u64,
+    pub enabled:        bool,
+    pub conf_threshold: u8,   // 0-100
 }
 
 impl PrefilterPanel {
@@ -242,6 +291,46 @@ pub struct ProbePage {
     pub sources_ht:  bool,
     pub verify:      bool,
     pub probe_result: Option<ProbeResult>,
+}
+
+pub struct TrackedRow {
+    pub class_name:     String,
+    pub kind:           String,
+    pub domain:         String,
+    pub last_probed:    Option<i64>,
+    pub snapshot_count: usize,
+    pub latest_title:   Option<String>,
+    pub probe_interval_days: u64,
+}
+
+impl TrackedRow {
+    pub fn status(&self) -> &'static str {
+        if self.snapshot_count == 0 {
+            return "no baseline";
+        }
+        match self.last_probed {
+            None => "ok",   // has snapshots, probe_run record missing — still usable
+            Some(ts) => {
+                let age_days = (crate::time::now_secs() - ts) / 86400;
+                if age_days as u64 >= self.probe_interval_days { "stale" } else { "ok" }
+            }
+        }
+    }
+    pub fn status_class(&self) -> &'static str {
+        match self.status() {
+            "no baseline" | "stale" => "sev-4",
+            _ => "sev-1",
+        }
+    }
+}
+
+#[derive(Template)]
+#[template(path = "tracked.html")]
+pub struct TrackedPage {
+    pub page_title: &'static str,
+    pub active:     &'static str,
+    pub rows:       Vec<TrackedRow>,
+    pub probe_interval_days: u64,
 }
 
 #[derive(Template)]

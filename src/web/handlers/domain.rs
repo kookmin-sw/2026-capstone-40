@@ -40,6 +40,18 @@ pub fn handle(domain: &str, db: &Db) -> response::HttpResponse {
         })
         .collect();
 
+    let snapshots: Vec<pages::SnapshotRow> = store::get_fingerprints(&conn, domain, 20)
+        .into_iter()
+        .map(|fp| pages::SnapshotRow {
+            ts:             fp.ts,
+            status_code:    None,
+            title:          fp.title,
+            has_login_form: false,
+            redirect_depth: 0,
+            html_hash_short: fp.html_hash.chars().take(12).collect(),
+        })
+        .collect();
+
     let body = pages::DomainPage {
         page_title: "Domain",
         active:     "domains",
@@ -47,9 +59,9 @@ pub fn handle(domain: &str, db: &Db) -> response::HttpResponse {
         risk_score,
         risk_class,
         ip_history,
-        signals:   vec![], // Phase 3: passive filter signals
+        signals:   vec![],
         alerts,
-        snapshots: vec![], // Phase 2: probe snapshots
+        snapshots,
     }
     .render()
     .unwrap_or_else(|e| format!("<pre>Template error: {e}</pre>"));

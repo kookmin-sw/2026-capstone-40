@@ -178,6 +178,110 @@ pub fn traffic_chart(series: &[Series<'_>]) -> Vec<u8> {
     out.into_bytes()
 }
 
+// ---- risk score trend (600×120 viewBox) ------------------------------------
+
+pub fn risk_trend_chart(points: &[(i64, u32)]) -> Vec<u8> {
+    const W: u64 = 600;
+    const H: u64 = 120;
+    const PL: u64 = 28;
+    const PB: u64 = 18;
+    const PT: u64 = 8;
+    const PR: u64 = 8;
+    const MAX: u64 = 100;
+
+    let iw = W - PL - PR;
+    let ih = H - PT - PB;
+    let y0 = PT + ih;
+
+    let mut out = format!(
+        r#"<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:120px">"#
+    );
+
+    // grid lines at 25 / 50 / 75 / 100
+    for &val in &[25u64, 50, 75, 100] {
+        let y = PT + ih - val * ih / MAX;
+        let color = if val == 100 { "#ef4444" } else { GRID };
+        out.push_str(&format!(
+            r#"<line x1="{PL}" y1="{y}" x2="{}" y2="{y}" stroke="{color}" stroke-width="0.5"/>"#,
+            W - PR
+        ));
+        out.push_str(&format!(
+            r#"<text x="{}" y="{}" font-size="8" fill="{LABEL_FG}" text-anchor="end">{val}</text>"#,
+            PL - 3, y + 3
+        ));
+    }
+    out.push_str(&format!(
+        r#"<line x1="{PL}" y1="{y0}" x2="{}" y2="{y0}" stroke="{BASELINE}" stroke-width="1"/>"#,
+        W - PR
+    ));
+
+    if points.len() < 2 {
+        let cx = PL + iw / 2;
+        let cy = PT + ih / 2;
+        out.push_str(&format!(
+            r#"<text x="{cx}" y="{cy}" font-size="11" fill="{MUTED_FG}" text-anchor="middle">No risk history yet</text>"#
+        ));
+        out.push_str("</svg>");
+        return out.into_bytes();
+    }
+
+    let t0 = points.first().unwrap().0 as u64;
+    let t1 = points.last().unwrap().0 as u64;
+    let tspan = (t1 - t0).max(1);
+
+    let coords: Vec<(u64, u64)> = points
+        .iter()
+        .map(|&(ts, score)| {
+            let x = PL + (ts as u64 - t0) * iw / tspan;
+            let y = PT + ih - (score as u64).min(MAX) * ih / MAX;
+            (x, y)
+        })
+        .collect();
+
+    let color = "#ef4444";
+    let line_pts = pts_str(&coords);
+    let fx = coords.first().map_or(PL, |&(x, _)| x);
+    let lx = coords.last().map_or(W - PR, |&(x, _)| x);
+
+    out.push_str(&format!(
+        r#"<polygon points="{fx},{y0} {line_pts} {lx},{y0}" fill="{color}" fill-opacity="0.1"/>"#
+    ));
+    out.push_str(&format!(
+        r#"<polyline points="{line_pts}" fill="none" stroke="{color}" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round"/>"#
+    ));
+
+    // last score dot + label
+    if let Some(&(lx2, ly)) = coords.last() {
+        let score = points.last().unwrap().1;
+        out.push_str(&format!(
+            r#"<circle cx="{lx2}" cy="{ly}" r="3" fill="{color}"/>"#
+        ));
+        out.push_str(&format!(
+            r#"<text x="{}" y="{}" font-size="9" fill="{color}" font-weight="600">{score}</text>"#,
+            lx2 + 5, ly + 3
+        ));
+    }
+
+    // X-axis time labels (start / mid / end)
+    let fmt_offset = |secs: u64| -> String {
+        if secs < 60 { format!("{secs}s") }
+        else if secs < 3600 { format!("{}m", secs / 60) }
+        else { format!("{}h", secs / 3600) }
+    };
+    out.push_str(&format!(
+        r#"<text x="{PL}" y="{}" font-size="8" fill="{LABEL_FG}" text-anchor="start">start</text>"#,
+        H - 3
+    ));
+    out.push_str(&format!(
+        r#"<text x="{}" y="{}" font-size="8" fill="{LABEL_FG}" text-anchor="end">+{}</text>"#,
+        W - PR, H - 3, fmt_offset(tspan)
+    ));
+
+    out.push_str("</svg>");
+    out.into_bytes()
+}
+
 fn pts_str(coords: &[(u64, u64)]) -> String {
     coords
         .iter()

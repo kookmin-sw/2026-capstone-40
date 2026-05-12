@@ -5,7 +5,9 @@
   <a href="/domains" class="btn-ghost">← Domains</a>
   <h2>{{ domain }}</h2>
   {% if let Some(score) = risk_score %}
-    <span class="risk-pill {{ risk_class }}">{{ score }}</span>
+    <span class="risk-pill {{ risk_class }}" title="Accumulated risk score (0–100)">{{ score }}</span>
+  {% else %}
+    <span class="muted" style="font-size:0.85rem">no score</span>
   {% endif %}
 </div>
 
@@ -32,24 +34,82 @@
   </div>
 
   <div class="card">
-    <h3 class="card-title">Risk Signals</h3>
-    {% if signals.is_empty() %}
-      <p class="muted">Not scored yet.</p>
-    {% else %}
-      <div class="signal-list">
-        {% for s in signals %}
-        <div class="signal-row">
-          <span style="flex:1">{{ s.name }}</span>
-          <div class="signal-bar-wrap">
-            <div class="signal-bar" style="width:{{ s.pct }}%"></div>
-          </div>
-          <span class="signal-pts">+{{ s.points }}</span>
-        </div>
-        {% endfor %}
+    <h3 class="card-title">Risk Summary</h3>
+    <div class="pipeline-rows">
+      <div class="pipeline-row">
+        <span class="muted">Risk score</span>
+        <strong>
+          {% if let Some(score) = risk_score %}
+            <span class="risk-pill {{ risk_class }}">{{ score }} / 100</span>
+          {% else %}—{% endif %}
+        </strong>
       </div>
+      <div class="pipeline-row">
+        <span class="muted">Alerts</span>
+        <strong>{{ alerts.len() }}</strong>
+      </div>
+      <div class="pipeline-row">
+        <span class="muted">Last probe</span>
+        <strong>
+          {% if let Some(s) = snapshots.first() %}
+            <span style="color:var(--risk-low);font-size:0.82rem">{{ s.ts|fmt_ts }}</span>
+          {% else %}
+            <span class="badge sev-3" style="font-size:0.72rem">pending</span>
+          {% endif %}
+        </strong>
+      </div>
+      <div class="pipeline-row">
+        <span class="muted">Page title</span>
+        <strong style="font-size:0.82rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          {% if let Some(s) = snapshots.first() %}
+            {{ s.title|default("—") }}
+          {% else %}—{% endif %}
+        </strong>
+      </div>
+      <div class="pipeline-row">
+        <span class="muted">SimHash</span>
+        <code class="muted" style="font-size:0.75rem">
+          {% if let Some(s) = snapshots.first() %}
+            {{ s.html_hash_short }}
+          {% else %}—{% endif %}
+        </code>
+      </div>
+      <div class="pipeline-row">
+        <span class="muted">Snapshots</span>
+        <strong>{{ snapshots.len() }}</strong>
+      </div>
+    </div>
+    {% if !alerts.is_empty() %}
+      {% if let Some(a) = alerts.first() %}
+        {% if let Some(cls) = a.predicted_class() %}
+        <div style="margin-top:0.75rem;padding:0.6rem 0.75rem;background:var(--bg);border-radius:var(--radius);font-size:0.82rem">
+          <span class="muted">ARI classifies as </span>
+          <strong>{{ cls }}</strong>
+          {% if let Some(pct) = a.confidence_pct() %}
+            <span class="{{ a.conf_class() }}" style="margin-left:0.4rem;font-weight:600">{{ pct }}%</span>
+          {% endif %}
+          {% if a.dir_guessed() %}
+            <span class="dir-tag" title="Capture started mid-flow — no TCP SYN seen, direction guessed by port">mid-flow</span>
+          {% endif %}
+          {% if let Some(pl) = a.probe_label() %}
+            <span class="probe-tag probe-{{ pl|lower }}" style="margin-left:0.4rem">{{ pl }}{% if let Some(d) = a.probe_dist() %} ({{ d }}){% endif %}</span>
+          {% endif %}
+        </div>
+        {% endif %}
+      {% endif %}
     {% endif %}
   </div>
 
+</div>
+
+<div class="panel chart-panel" style="margin-bottom:1rem;margin-top:1rem">
+  <div class="panel-header">
+    <span class="panel-title">Risk Score Trend</span>
+    <span class="muted" style="font-size:0.75rem">accumulated from alerts · 0–100</span>
+  </div>
+  <div class="chart-body">
+    <img src="/chart/risk/{{ domain|urlencode }}" alt="risk trend" class="chart-img" style="height:120px" />
+  </div>
 </div>
 
 <div class="card" style="margin-top:1rem; padding:0; overflow:hidden">
@@ -62,14 +122,30 @@
   {% else %}
     <table>
       <thead><tr>
-        <th>Severity</th><th>Type</th><th>Detail</th><th>Time</th><th></th>
+        <th>Sev</th><th>Predicted</th><th>Conf</th><th>Probe</th><th>Time</th><th></th>
       </tr></thead>
       <tbody>
         {% for a in alerts %}
-        <tr>
+        <tr {% if a.acknowledged %}style="opacity:0.5"{% endif %}>
           <td><span class="badge sev-{{ a.severity }}">{{ a.severity_label() }}</span></td>
-          <td><code>{{ a.type_label() }}</code></td>
-          <td class="muted">{{ a.detail|default("") }}</td>
+          <td>
+            {% if let Some(cls) = a.predicted_class() %}
+              <code style="font-size:0.8rem">{{ cls }}</code>
+            {% else %}
+              <span class="muted">{{ a.type_label() }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if let Some(pct) = a.confidence_pct() %}
+              <span class="{{ a.conf_class() }}" style="font-weight:600;font-family:var(--mono);font-size:0.82rem">{{ pct }}%</span>
+              {% if a.dir_guessed() %}<span class="dir-tag" title="Direction guessed">mid-flow</span>{% endif %}
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td>
+            {% if let Some(pl) = a.probe_label() %}
+              <span class="probe-tag probe-{{ pl|lower }}">{{ pl }}{% if let Some(d) = a.probe_dist() %} ({{ d }}){% endif %}</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
           <td class="muted mono">{{ a.ts|fmt_ts }}</td>
           <td>
             {% if !a.acknowledged %}
@@ -87,37 +163,21 @@
 
 <div class="card" style="margin-top:1rem; padding:0; overflow:hidden">
   <div class="view-header" style="padding:1rem 1rem 0">
-    <h3 class="card-title">Snapshots</h3>
+    <h3 class="card-title">Baseline Snapshots</h3>
     <span class="sub">{{ snapshots.len() }}</span>
   </div>
   {% if snapshots.is_empty() %}
-    <p class="muted" style="padding:1rem">No snapshots yet.</p>
+    <p class="muted" style="padding:1rem">No snapshots probed yet.</p>
   {% else %}
     <table>
       <thead><tr>
-        <th>Time</th><th>Status</th><th>Title</th>
-        <th>Login Form</th><th>Redirects</th><th>HTML Hash</th>
+        <th>Time</th><th>Title</th><th>SimHash</th>
       </tr></thead>
       <tbody>
         {% for s in snapshots %}
         <tr>
           <td class="muted mono">{{ s.ts|fmt_ts }}</td>
-          <td>
-            {% if let Some(code) = s.status_code %}
-              <span class="badge {{ s.status_badge_class() }}">{{ code }}</span>
-            {% else %}
-              <span class="muted">—</span>
-            {% endif %}
-          </td>
           <td>{{ s.title|default("—") }}</td>
-          <td>
-            {% if s.has_login_form %}
-              <span class="badge sev-3">yes</span>
-            {% else %}
-              <span class="muted">no</span>
-            {% endif %}
-          </td>
-          <td class="muted">{{ s.redirect_depth }}</td>
           <td class="muted mono" style="font-size:0.75rem">{{ s.html_hash_short }}</td>
         </tr>
         {% endfor %}

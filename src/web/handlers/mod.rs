@@ -4,10 +4,12 @@ mod dashboard;
 mod domain;
 mod domains;
 mod probe;
+mod tracked;
 
 use std::sync::atomic::AtomicBool;
 
 use crate::config::Config;
+use crate::prefilter::LabelMap;
 use crate::store::Db;
 use crate::web::{response, router::Route};
 
@@ -18,17 +20,20 @@ pub fn dispatch(
     config: &Config,
     db: &Db,
     capture_running: &AtomicBool,
+    labels: Option<&LabelMap>,
 ) -> HttpResponse {
     match route {
-        Route::Dashboard => dashboard::handle(config, db, capture_running),
+        Route::Dashboard  => dashboard::handle(config, db, capture_running),
         Route::Chart(ref name) => chart::handle(name, db),
+        Route::RiskChart(ref domain) => chart::handle_risk(domain, db),
         Route::Alerts { show_acked } => alerts::handle(show_acked, db),
-        Route::Domains => domains::handle(db),
+        Route::Domains    => domains::handle(db),
         Route::Domain(ref d) => domain::handle(d, db),
         Route::Probe(query) => probe::handle(query, config, db),
+        Route::Tracked    => tracked::handle(labels, db),
         Route::AckAlert(id) => handle_ack(id, db),
         Route::StaticFile(ref name) => serve_static(name),
-        Route::NotFound => response::not_found(),
+        Route::NotFound   => response::not_found(),
     }
 }
 

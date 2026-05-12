@@ -24,3 +24,12 @@ pub fn handle(name: &str, db: &Db) -> response::HttpResponse {
 
     response::svg(svg_bytes)
 }
+
+pub fn handle_risk(domain: &str, db: &Db) -> response::HttpResponse {
+    let conn = match db.lock() {
+        Ok(c)  => c,
+        Err(_) => return response::svg(chart::risk_trend_chart(&[])),
+    };
+    let trend = store::domain_risk_trend(&conn, domain);
+    response::svg(chart::risk_trend_chart(&trend))
+}

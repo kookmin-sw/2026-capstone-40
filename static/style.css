@@ -358,6 +358,38 @@ input[type="text"]:focus {
 .signal-bar  { height: 100%; background: var(--accent); border-radius: 3px; }
 .signal-pts  { font-family: var(--mono); color: var(--muted); font-size: 0.8rem; min-width: 2.5rem; text-align: right; }
 
+/* ---- confidence colours ---- */
+.conf-crit { color: var(--s5); }
+.conf-high { color: var(--s4); }
+.conf-med  { color: var(--s3); }
+.conf-low  { color: var(--s2); }
+
+/* ---- inline tags (dir? / probe result) ---- */
+.dir-tag {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: 3px;
+  background: var(--s3-bg);
+  color: var(--s3);
+  vertical-align: middle;
+  cursor: default;
+}
+.probe-tag {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+.probe-exact    { background: var(--s5-bg); color: var(--s5); }
+.probe-high     { background: var(--s4-bg); color: var(--s4); }
+.probe-moderate { background: var(--s3-bg); color: var(--s3); }
+.probe-no-match { background: var(--s1-bg); color: var(--muted); }
+
 /* ---- misc ---- */
 .muted  { color: var(--muted); }
 .mono   { font-family: var(--mono); }
