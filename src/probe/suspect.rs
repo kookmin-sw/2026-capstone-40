@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use crate::store::{self, Db};
 use crate::time::now_secs;
 
-use super::probe;
+use super::probe_baseline;
 
 const PERIODIC_INTERVAL: Duration = Duration::from_secs(300);
 const FAIL_COOLDOWN: Duration = Duration::from_secs(300); // 5 min before retrying a failed domain
@@ -80,7 +80,7 @@ fn run(rx: Receiver<String>, db: Db, probe_threshold: u32, cache_secs: i64) {
                 let conn = db.lock().ok();
                 conn.and_then(|c| store::snapshot_count(&c, domain).into()).unwrap_or(0usize)
             };
-            probe::probe_baseline(domain, &db, now_secs());
+            probe_baseline(domain, &db, now_secs(), None);
             let after = {
                 let conn = db.lock().ok();
                 conn.and_then(|c| store::snapshot_count(&c, domain).into()).unwrap_or(0usize)

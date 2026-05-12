@@ -13,7 +13,7 @@ use crate::prefilter::{ClassKind, LabelMap};
 use crate::store::{self, Db};
 use crate::time::now_secs;
 
-use super::probe::{self};
+use super::probe_baseline;
 
 const RETRY_INTERVAL: Duration = Duration::from_secs(3600);      // 1h retry for no-baseline
 const REFRESH_INTERVAL: Duration = Duration::from_secs(6 * 3600); // 6h check for stale
@@ -62,7 +62,7 @@ fn run(labels: LabelMap, db: Db, probe_interval_days: u64) {
                 if let Ok(conn) = db.lock() {
                     store::upsert_domain(&conn, domain, "", now).ok();
                 }
-                probe::probe_baseline(domain, &db, now);
+                probe_baseline(domain, &db, now, None);
                 probed += 1;
             }
         }
