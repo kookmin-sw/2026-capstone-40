@@ -1,6 +1,6 @@
 pub mod chart;
 mod handlers;
-mod pages;
+mod templates;
 mod response;
 mod router;
 pub mod static_files;

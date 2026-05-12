@@ -2,7 +2,7 @@ use askama::Template as _;
 
 use crate::prefilter::{ClassKind, LabelMap};
 use crate::store::{self, Db};
-use crate::web::{pages, response};
+use crate::web::{templates, response};
 
 const PROBE_INTERVAL_DAYS: u64 = 7;
 
@@ -34,7 +34,7 @@ pub fn handle(labels: Option<&LabelMap>, db: &Db) -> response::HttpResponse {
                         ClassKind::Known     => "known",
                         ClassKind::Benign    => "benign",
                     };
-                    rows.push(pages::TrackedRow {
+                    rows.push(templates::TrackedRow {
                         class_name: entry.name.clone(),
                         kind: kind.into(),
                         domain: domain.clone(),
@@ -49,7 +49,7 @@ pub fn handle(labels: Option<&LabelMap>, db: &Db) -> response::HttpResponse {
         }
     };
 
-    let body = pages::TrackedPage {
+    let body = templates::TrackedPage {
         page_title: "Tracked",
         active: "tracked",
         rows,

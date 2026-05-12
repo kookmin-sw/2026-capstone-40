@@ -1,6 +1,6 @@
 use askama::Template as _;
 use crate::store::Db;
-use crate::web::{pages, response};
+use crate::web::{templates, response};
 use crate::store;
 
 pub fn handle(domain: &str, db: &Db) -> response::HttpResponse {
@@ -12,7 +12,7 @@ pub fn handle(domain: &str, db: &Db) -> response::HttpResponse {
     let (risk_score, _decision) = store::domain_detail(&conn, domain)
         .unwrap_or((None, None));
 
-    let risk_class = pages::DomainRow {
+    let risk_class = templates::DomainRow {
         domain:      domain.to_string(),
         risk_score,
         decision:    None,
@@ -22,14 +22,14 @@ pub fn handle(domain: &str, db: &Db) -> response::HttpResponse {
     }
     .risk_class();
 
-    let ip_history: Vec<pages::IpRecord> = store::domain_ip_history(&conn, domain)
+    let ip_history: Vec<templates::IpRecord> = store::domain_ip_history(&conn, domain)
         .into_iter()
-        .map(|(ip, first_seen, last_seen)| pages::IpRecord { ip, first_seen, last_seen })
+        .map(|(ip, first_seen, last_seen)| templates::IpRecord { ip, first_seen, last_seen })
         .collect();
 
-    let alerts: Vec<pages::AlertRow> = store::domain_alerts(&conn, domain)
+    let alerts: Vec<templates::AlertRow> = store::domain_alerts(&conn, domain)
         .into_iter()
-        .map(|a| pages::AlertRow {
+        .map(|a| templates::AlertRow {
             id:           a.id,
             severity:     a.severity,
             alert_type:   a.alert_type,
@@ -40,9 +40,9 @@ pub fn handle(domain: &str, db: &Db) -> response::HttpResponse {
         })
         .collect();
 
-    let snapshots: Vec<pages::SnapshotRow> = store::get_fingerprints(&conn, domain, 20)
+    let snapshots: Vec<templates::SnapshotRow> = store::get_fingerprints(&conn, domain, 20)
         .into_iter()
-        .map(|fp| pages::SnapshotRow {
+        .map(|fp| templates::SnapshotRow {
             ts:             fp.ts,
             status_code:    None,
             title:          fp.title,
@@ -52,7 +52,7 @@ pub fn handle(domain: &str, db: &Db) -> response::HttpResponse {
         })
         .collect();
 
-    let body = pages::DomainPage {
+    let body = templates::DomainPage {
         page_title: "Domain",
         active:     "domains",
         domain:     domain.to_string(),

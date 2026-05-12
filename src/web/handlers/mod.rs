@@ -3,7 +3,7 @@ mod chart;
 mod dashboard;
 mod domain;
 mod domains;
-mod probe;
+mod probe_page;
 mod tracked;
 
 use std::sync::atomic::AtomicBool;
@@ -29,7 +29,7 @@ pub fn dispatch(
         Route::Alerts { show_acked } => alerts::handle(show_acked, db),
         Route::Domains    => domains::handle(db),
         Route::Domain(ref d) => domain::handle(d, db),
-        Route::Probe(query) => probe::handle(query, config, db),
+        Route::Probe(query) => probe_page::handle(query, config, db),
         Route::Tracked    => tracked::handle(labels, db),
         Route::AckAlert(id) => handle_ack(id, db),
         Route::StaticFile(ref name) => serve_static(name),

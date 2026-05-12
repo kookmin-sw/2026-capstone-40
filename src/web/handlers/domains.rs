@@ -1,6 +1,6 @@
 use askama::Template as _;
 use crate::store::Db;
-use crate::web::{pages, response};
+use crate::web::{templates, response};
 use crate::store;
 
 pub fn handle(db: &Db) -> response::HttpResponse {
@@ -9,9 +9,9 @@ pub fn handle(db: &Db) -> response::HttpResponse {
         Err(_) => return response::html(500, "<pre>DB lock poisoned</pre>".into()),
     };
 
-    let domains: Vec<pages::DomainRow> = store::all_domains(&conn)
+    let domains: Vec<templates::DomainRow> = store::all_domains(&conn)
         .into_iter()
-        .map(|d| pages::DomainRow {
+        .map(|d| templates::DomainRow {
             domain:      d.domain,
             risk_score:  d.risk_score,
             decision:    d.decision,
@@ -21,7 +21,7 @@ pub fn handle(db: &Db) -> response::HttpResponse {
         })
         .collect();
 
-    let body = pages::DomainsPage {
+    let body = templates::DomainsPage {
         page_title: "Domains",
         active:     "domains",
         domains,

@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::store;
 use crate::store::Db;
-use crate::web::{pages, response};
+use crate::web::{templates, response};
 use askama::Template as _;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -18,7 +18,7 @@ pub fn handle(config: &Config, db: &Db, capture_running: &AtomicBool) -> respons
     let domains = store::recent_domains(&conn, 10);
     let pf_stats = store::prefilter_stats(&conn);
 
-    let stats = pages::DashboardStats {
+    let stats = templates::DashboardStats {
         total_domains: s.total_domains,
         active_alerts: s.active_alerts,
         ips_captured: s.ips_captured,
@@ -31,7 +31,7 @@ pub fn handle(config: &Config, db: &Db, capture_running: &AtomicBool) -> respons
         _ => None,
     };
 
-    let pipeline = pages::PipelineStatus {
+    let pipeline = templates::PipelineStatus {
         capture_running: capture_running.load(Ordering::Acquire),
         capture_source,
         queue_depth: pl.queue_depth,
@@ -44,9 +44,9 @@ pub fn handle(config: &Config, db: &Db, capture_running: &AtomicBool) -> respons
 
     let severity_counts = severity_breakdown(&sev);
 
-    let recent_alerts: Vec<pages::AlertRow> = alerts
+    let recent_alerts: Vec<templates::AlertRow> = alerts
         .into_iter()
-        .map(|a| pages::AlertRow {
+        .map(|a| templates::AlertRow {
             id: a.id,
             severity: a.severity,
             alert_type: a.alert_type,
@@ -57,9 +57,9 @@ pub fn handle(config: &Config, db: &Db, capture_running: &AtomicBool) -> respons
         })
         .collect();
 
-    let recent_domains: Vec<pages::DomainRow> = domains
+    let recent_domains: Vec<templates::DomainRow> = domains
         .into_iter()
-        .map(|d| pages::DomainRow {
+        .map(|d| templates::DomainRow {
             domain: d.domain,
             risk_score: d.risk_score,
             decision: d.decision,
@@ -69,7 +69,7 @@ pub fn handle(config: &Config, db: &Db, capture_running: &AtomicBool) -> respons
         })
         .collect();
 
-    let prefilter = pages::PrefilterPanel {
+    let prefilter = templates::PrefilterPanel {
         malicious:      pf_stats.malicious,
         unknown:        pf_stats.unknown,
         classified:     pf_stats.classified,
@@ -77,7 +77,7 @@ pub fn handle(config: &Config, db: &Db, capture_running: &AtomicBool) -> respons
         conf_threshold: (config.prefilter.conf_threshold * 100.0).round() as u8,
     };
 
-    let body = pages::DashboardPage {
+    let body = templates::DashboardPage {
         page_title: "Dashboard",
         active: "dashboard",
         stats,
@@ -93,7 +93,7 @@ pub fn handle(config: &Config, db: &Db, capture_running: &AtomicBool) -> respons
     response::html(200, body)
 }
 
-fn severity_breakdown(rows: &[(u8, u64)]) -> Vec<pages::SeverityCount> {
+fn severity_breakdown(rows: &[(u8, u64)]) -> Vec<templates::SeverityCount> {
     const LABELS: [&str; 5] = ["info", "low", "medium", "high", "critical"];
     let max = rows.iter().map(|(_, n)| *n).max().unwrap_or(1).max(1);
     (1u8..=5)
@@ -103,7 +103,7 @@ fn severity_breakdown(rows: &[(u8, u64)]) -> Vec<pages::SeverityCount> {
                 .find(|(s, _)| *s == sev)
                 .map(|(_, n)| *n)
                 .unwrap_or(0);
-            pages::SeverityCount {
+            templates::SeverityCount {
                 severity: sev,
                 label: LABELS[(sev - 1) as usize],
                 count,

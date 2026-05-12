@@ -1,9 +1,9 @@
 use crate::config::Config;
-use crate::ip_to_domain::DEFAULT_DNS_CACHE;
-use crate::ip_to_domain::{lookup, LookupConfig};
+use crate::resolver::DEFAULT_DNS_CACHE;
+use crate::resolver::{lookup, LookupConfig};
 use crate::store::{self, Db};
 use crate::time::now_secs;
-use crate::web::{pages, response, router::ProbeQuery};
+use crate::web::{templates, response, router::ProbeQuery};
 use askama::Template as _;
 
 pub fn handle(query: Option<ProbeQuery>, config: &Config, db: &Db) -> response::HttpResponse {
@@ -19,7 +19,7 @@ pub fn handle(query: Option<ProbeQuery>, config: &Config, db: &Db) -> response::
         None => (String::new(), true, true, false),
     };
 
-    let body = pages::ProbePage {
+    let body = templates::ProbePage {
         page_title: "Probe",
         active: "probe",
         query_ip,
@@ -34,7 +34,7 @@ pub fn handle(query: Option<ProbeQuery>, config: &Config, db: &Db) -> response::
     response::html(200, body)
 }
 
-fn run_probe(q: &ProbeQuery, config: &Config, db: &Db) -> pages::ProbeResult {
+fn run_probe(q: &ProbeQuery, config: &Config, db: &Db) -> templates::ProbeResult {
     let cache_path = config
         .ip_to_domain
         .cache_path
@@ -66,14 +66,14 @@ fn run_probe(q: &ProbeQuery, config: &Config, db: &Db) -> pages::ProbeResult {
                 Err(e) => log::error!("probe: db lock poisoned: {e}"),
             }
 
-            pages::ProbeResult {
+            templates::ProbeResult {
                 ip: r.ip,
                 count: r.count,
                 verified: r.verified,
                 domains: r
                     .domains
                     .into_iter()
-                    .map(|d| pages::ProbeEntry {
+                    .map(|d| templates::ProbeEntry {
                         domain: d.domain,
                         sources: d.sources,
                     })
@@ -81,7 +81,7 @@ fn run_probe(q: &ProbeQuery, config: &Config, db: &Db) -> pages::ProbeResult {
                 notes: r.notes,
             }
         }
-        Err(e) => pages::ProbeResult {
+        Err(e) => templates::ProbeResult {
             ip: q.ip.clone(),
             count: 0,
             verified: false,
