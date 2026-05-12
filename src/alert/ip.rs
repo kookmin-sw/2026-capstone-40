@@ -1,6 +1,6 @@
 use std::net::IpAddr;
 
-use crate::ip_to_domain::{lookup, LookupConfig};
+use crate::resolver::{lookup, LookupConfig};
 use crate::store::{self, Db};
 use crate::time::now_secs;
 

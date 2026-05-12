@@ -1,12 +1,12 @@
 use std::net::IpAddr;
 use std::sync::mpsc::Sender;
 
-use crate::ip_to_domain::{lookup, LookupConfig};
+use crate::resolver::{lookup, LookupConfig};
 use crate::prefilter::{PrefilterOutput, Verdict};
 use crate::store::{self, Db};
 use crate::time::now_secs;
 
-use super::probe::{self, ProbeVerdict};
+use crate::probe::{probe_and_compare, ProbeVerdict};
 
 pub fn handle(out: PrefilterOutput, db: &Db, lookup_cfg: &LookupConfig, probe_tx: &Sender<String>) {
     if is_private_ip(out.server_ip) { return; }
@@ -65,7 +65,7 @@ pub fn handle(out: PrefilterOutput, db: &Db, lookup_cfg: &LookupConfig, probe_tx
             reference_domains.push(d.clone());
         }
     }
-    let probe_verdict = probe::probe_and_compare(&domain, &reference_domains, db, now, lookup_cfg.probe_cache_secs);
+    let probe_verdict = probe_and_compare(&domain, &reference_domains, db, now, lookup_cfg.probe_cache_secs, lookup_cfg.passive_dns.as_ref());
 
     // ── Risk delta + severity based on probe verdict ──────────────────────────
     // Probe result is ground truth; ARI alone is uncertain.

@@ -1,15 +1,13 @@
-mod baseline;
 mod flow;
 mod ip;
-mod probe;
-mod suspect_prober;
 
 use std::sync::{mpsc::Receiver, Arc, Mutex};
 
 use crate::capture::CaptureEvent;
 use crate::config::Config;
-use crate::ip_to_domain::{LookupConfig, PassiveDnsCache, DEFAULT_DNS_CACHE};
 use crate::prefilter::LabelMap;
+use crate::probe::{baseline, suspect};
+use crate::resolver::{LookupConfig, PassiveDnsCache, DEFAULT_DNS_CACHE};
 use crate::store::Db;
 
 pub fn spawn_workers(
@@ -34,14 +32,12 @@ pub fn spawn_workers(
         probe_cache_secs: (config.probe.cache_days * 86400) as i64,
     });
 
-    // Baseline prober: proactively fingerprint known target domains weekly.
     if let Some(lm) = labels {
         baseline::spawn(lm, db.clone(), 7);
     }
 
-    // Suspect prober: probes high-risk domains immediately when inline probe fails.
     let probe_cache_secs = (config.probe.cache_days * 86400) as i64;
-    let probe_tx = Arc::new(suspect_prober::spawn(db.clone(), config.filter.probe_threshold, probe_cache_secs));
+    let probe_tx = Arc::new(suspect::spawn(db.clone(), config.filter.probe_threshold, probe_cache_secs));
 
     for _ in 0..n {
         let rx         = Arc::clone(&rx);

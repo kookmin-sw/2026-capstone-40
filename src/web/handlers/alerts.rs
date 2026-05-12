@@ -1,6 +1,6 @@
 use askama::Template as _;
 use crate::store::Db;
-use crate::web::{pages, response};
+use crate::web::{templates, response};
 use crate::store;
 
 pub fn handle(show_acked: bool, db: &Db) -> response::HttpResponse {
@@ -9,9 +9,9 @@ pub fn handle(show_acked: bool, db: &Db) -> response::HttpResponse {
         Err(_) => return response::html(500, "<pre>DB lock poisoned</pre>".into()),
     };
 
-    let alerts: Vec<pages::AlertRow> = store::all_alerts(&conn, show_acked)
+    let alerts: Vec<templates::AlertRow> = store::all_alerts(&conn, show_acked)
         .into_iter()
-        .map(|a| pages::AlertRow {
+        .map(|a| templates::AlertRow {
             id:           a.id,
             severity:     a.severity,
             alert_type:   a.alert_type,
@@ -22,7 +22,7 @@ pub fn handle(show_acked: bool, db: &Db) -> response::HttpResponse {
         })
         .collect();
 
-    let body = pages::AlertsPage {
+    let body = templates::AlertsPage {
         page_title: "Alerts",
         active:     "alerts",
         alerts,
