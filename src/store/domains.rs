@@ -83,6 +83,27 @@ pub fn recent_domains(conn: &Connection, limit: usize) -> Vec<Domain> {
     query_domains(conn, Some(limit))
 }
 
+/// Domains with risk_score >= min_score that have no snapshot newer than stale_secs.
+/// These are candidates for background probing.
+pub fn domains_needing_probe(conn: &Connection, min_score: u32, stale_secs: i64, now: i64) -> Vec<String> {
+    let cutoff = now - stale_secs;
+    let mut stmt = match conn.prepare(
+        "SELECT d.domain FROM domains d
+         WHERE d.risk_score >= ?1
+           AND d.domain NOT GLOB '*.*.*.*'
+           AND (
+               NOT EXISTS (SELECT 1 FROM probe_runs p WHERE p.domain = d.domain AND p.ts > ?2)
+           )
+         ORDER BY d.risk_score DESC
+         LIMIT 50",
+    ) { Ok(s) => s, Err(_) => return vec![] };
+
+    stmt.query_map([min_score as i64, cutoff], |r| r.get(0))
+        .ok()
+        .map(|rows| rows.filter_map(|x| x.ok()).collect())
+        .unwrap_or_default()
+}
+
 pub fn all_domains(conn: &Connection) -> Vec<Domain> {
     query_domains(conn, None)
 }

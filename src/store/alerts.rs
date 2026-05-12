@@ -67,6 +67,36 @@ pub fn insert_alert(
     Ok(conn.last_insert_rowid())
 }
 
+/// Replay domain's alerts oldest→newest, accumulate risk score.
+/// Returns (ts, score) pairs — suitable for plotting a risk trend.
+pub fn domain_risk_trend(conn: &Connection, domain: &str) -> Vec<(i64, u32)> {
+    let mut stmt = match conn.prepare(
+        "SELECT alert_type, ts FROM alerts WHERE domain=?1 ORDER BY ts ASC",
+    ) { Ok(s) => s, Err(_) => return vec![] };
+
+    let rows: Vec<(String, i64)> = stmt
+        .query_map([domain], |r| Ok((r.get(0)?, r.get(1)?)))
+        .ok()
+        .map(|r| r.filter_map(|x| x.ok()).collect())
+        .unwrap_or_default();
+
+    let mut score: u32 = 0;
+    let mut trend = Vec::with_capacity(rows.len() + 1);
+    if !rows.is_empty() {
+        trend.push((rows[0].1, 0u32)); // start at 0
+    }
+    for (alert_type, ts) in rows {
+        let delta: u32 = match alert_type.as_str() {
+            "PREFILTER_MALICIOUS"  => 60,
+            "PREFILTER_CLASSIFIED" => 10,
+            _ => 5,
+        };
+        score = (score + delta).min(100);
+        trend.push((ts, score));
+    }
+    trend
+}
+
 pub fn ack_alert(conn: &Connection, id: i64) -> Result<()> {
     conn.execute("UPDATE alerts SET acknowledged=1 WHERE id=?1", [id])?;
     Ok(())

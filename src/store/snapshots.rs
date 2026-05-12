@@ -49,6 +49,26 @@ pub fn get_fingerprints(conn: &Connection, domain: &str, limit: usize) -> Vec<St
     .unwrap_or_default()
 }
 
+pub fn snapshot_count(conn: &Connection, domain: &str) -> usize {
+    conn.query_row(
+        "SELECT COUNT(*) FROM snapshots s JOIN domains d ON d.id=s.domain_id WHERE d.domain=?1",
+        [domain],
+        |r| r.get::<_, i64>(0),
+    )
+    .unwrap_or(0) as usize
+}
+
+/// Unix timestamp of the most recent probe run for `domain`, or None if never probed.
+pub fn last_probe_ts(conn: &Connection, domain: &str) -> Option<i64> {
+    conn.query_row(
+        "SELECT MAX(ts) FROM probe_runs WHERE domain=?1",
+        [domain],
+        |r| r.get::<_, Option<i64>>(0),
+    )
+    .ok()
+    .flatten()
+}
+
 pub fn record_probe_run(conn: &Connection, domain: &str, ts: i64, success: bool) -> Result<()> {
     conn.execute(
         "INSERT INTO probe_runs (domain,ts,success) VALUES (?1,?2,?3)",

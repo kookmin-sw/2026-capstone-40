@@ -11,12 +11,12 @@ use rusqlite::{Connection, Result, params};
 
 use crate::paths::expand_tilde;
 
-pub use alerts::{ack_alert, all_alerts, domain_alerts, insert_alert, recent_alerts, severity_counts};
+pub use alerts::{ack_alert, all_alerts, domain_alerts, domain_risk_trend, insert_alert, recent_alerts, severity_counts};
 pub use domains::{
-    all_domains, domain_detail, domain_ip_history, domain_risk, recent_domains,
-    stats, update_domain_risk, upsert_domain,
+    all_domains, domain_detail, domain_ip_history, domain_risk, domains_needing_probe,
+    recent_domains, stats, update_domain_risk, upsert_domain,
 };
-pub use snapshots::{get_fingerprints, record_probe_run, save_fingerprint};
+pub use snapshots::{get_fingerprints, last_probe_ts, record_probe_run, save_fingerprint, snapshot_count};
 pub use stats::{
     inc_filter_decision, inc_traffic_alerts, inc_traffic_domains, inc_traffic_ips,
     pipeline_status, prefilter_stats, traffic_data,
