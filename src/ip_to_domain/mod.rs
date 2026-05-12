@@ -35,9 +35,11 @@ pub struct LookupConfig {
     pub timeout_s: f64,
     pub cache_path: String,
     pub cache_ttl_days: u64,
-    /// Passive DNS cache shared with the capture thread. Set to `Some` to
-    /// enable the `passive-dns` provider.
     pub passive_dns: Option<PassiveDnsCache>,
+    /// Domain suffixes (e.g. ".tailscale.com") dropped after resolution in flow pipeline.
+    pub skip_domain_suffixes: Vec<String>,
+    /// Reuse cached probe fingerprint if within this many seconds (from [probe] cache_days).
+    pub probe_cache_secs: i64,
 }
 
 impl Default for LookupConfig {
@@ -49,6 +51,8 @@ impl Default for LookupConfig {
             cache_path: DEFAULT_DNS_CACHE.into(),
             cache_ttl_days: DEFAULT_CACHE_TTL_DAYS,
             passive_dns: None,
+            skip_domain_suffixes: vec![".tailscale.com".into()],
+            probe_cache_secs: 7 * 86400,
         }
     }
 }

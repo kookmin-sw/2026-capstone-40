@@ -9,7 +9,7 @@ pub mod prefilter;
 pub mod store;
 pub mod time;
 pub mod web;
-// pub mod passive_filter;  // Phase 3
+// pub mod passive_filter;  // Phase 3 (if needed)
 // pub mod active_probe;    // Phase 2
 // pub mod fingerprint;     // Phase 2
 // pub mod detector;        // Phase 4
@@ -33,33 +33,39 @@ pub fn serve(bind: String, cfg: config::Config) {
     // Passive DNS cache — shared between capture thread (writes) and workers (reads).
     let passive_dns = ip_to_domain::PassiveDnsCache::new();
 
-    let prefilter = if cfg.prefilter.enabled {
+    let (prefilter, label_map) = if cfg.prefilter.enabled {
         match prefilter::Prefilter::load(&cfg.prefilter) {
             Ok(pf) => {
                 log::info!("prefilter loaded ({} flow cap)", cfg.prefilter.max_flows);
-                Some(pf)
+                let lm = pf.labels().clone();
+                (Some(pf), Some(lm))
             }
             Err(e) => {
                 log::error!("prefilter disabled: {e}");
-                None
+                (None, None)
             }
         }
     } else {
-        None
+        (None, None)
     };
 
     let cap_cfg = cfg.capture.clone();
     let capture_running_for_thread = Arc::clone(&capture_running);
     let passive_dns_for_capture = passive_dns.clone();
+    let skip_ips_for_capture: Vec<prefilter::flow_table::SkipNet> = cfg.prefilter.skip_ips
+        .iter()
+        .filter_map(|s| prefilter::flow_table::SkipNet::parse(s))
+        .collect();
     std::thread::spawn(move || {
         capture_running_for_thread.store(true, Ordering::Release);
-        capture::run(&cap_cfg, evt_tx, prefilter, Some(passive_dns_for_capture));
+        capture::run(&cap_cfg, evt_tx, prefilter, Some(passive_dns_for_capture), skip_ips_for_capture);
         capture_running_for_thread.store(false, Ordering::Release);
     });
 
-    pipeline::spawn_workers(evt_rx, db.clone(), &cfg, passive_dns);
+    let labels_for_web = label_map.clone();
+    pipeline::spawn_workers(evt_rx, db.clone(), &cfg, passive_dns, label_map);
 
-    web::Server::new(bind, cfg, db, capture_running)
+    web::Server::new(bind, cfg, db, capture_running, labels_for_web)
         .run()
         .unwrap();
 }

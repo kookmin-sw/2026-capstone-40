@@ -54,6 +54,10 @@ pub struct ProbeConfig {
     #[serde(default = "default_true")]
     pub screenshot: bool,
     pub chromium: Option<String>,
+    /// Reuse existing snapshot fingerprint if last probe is within this many days.
+    /// Set to 0 to always fetch fresh HTML.
+    #[serde(default = "default_probe_cache_days")]
+    pub cache_days: u64,
 }
 
 impl Default for ProbeConfig {
@@ -63,9 +67,12 @@ impl Default for ProbeConfig {
             max_assets: 50,
             screenshot: true,
             chromium: None,
+            cache_days: default_probe_cache_days(),
         }
     }
 }
+
+fn default_probe_cache_days() -> u64 { 7 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct FilterConfig {
@@ -144,9 +151,12 @@ pub struct PrefilterConfig {
     /// TCP server ports to skip (not trained on these). Configurable so no hardcoding in binary.
     #[serde(default = "default_skip_ports")]
     pub skip_ports: Vec<u16>,
-    /// Server IPs to skip (e.g. DNS resolvers whose DoH traffic is not training data).
+    /// Server IPs/CIDRs to skip at packet level.
     #[serde(default)]
     pub skip_ips: Vec<String>,
+    /// Domain suffixes dropped after resolution (e.g. ".tailscale.com").
+    #[serde(default = "default_skip_domain_suffixes")]
+    pub skip_domain_suffixes: Vec<String>,
 }
 
 impl Default for PrefilterConfig {
@@ -163,8 +173,13 @@ impl Default for PrefilterConfig {
             conf_threshold: default_conf_threshold(),
             skip_ports: default_skip_ports(),
             skip_ips: vec![],
+            skip_domain_suffixes: default_skip_domain_suffixes(),
         }
     }
+}
+
+fn default_skip_domain_suffixes() -> Vec<String> {
+    vec![".tailscale.com".into()]
 }
 
 fn default_skip_ports() -> Vec<u16> {
