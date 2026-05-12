@@ -94,18 +94,18 @@ impl Prefilter {
             });
         }
 
-        let skip_ips: Vec<std::net::IpAddr> = cfg.skip_ips.iter()
-            .filter_map(|s| s.parse().ok())
+        let skip_nets: Vec<flow_table::SkipNet> = cfg.skip_ips.iter()
+            .filter_map(|s| flow_table::SkipNet::parse(s))
             .collect();
 
         Ok(Self {
-            table: FlowTable::new(
+            table: FlowTable::new_with_nets(
                 cfg.length_dim,
                 cfg.select_dir,
                 Duration::from_secs(cfg.flow_timeout_s),
                 cfg.max_flows,
                 cfg.skip_ports.clone(),
-                skip_ips,
+                skip_nets,
             ),
             booster,
             labels,
@@ -155,6 +155,8 @@ impl Prefilter {
     }
 
     pub fn flow_count(&self) -> usize { self.table.len() }
+
+    pub fn labels(&self) -> &LabelMap { &self.labels }
 }
 
 fn argmax(p: &[f32]) -> (u32, f32) {

@@ -22,6 +22,7 @@ use pcap::{Active, Capture, Offline};
 use crate::config::CaptureConfig;
 use crate::ip_to_domain::PassiveDnsCache;
 use crate::prefilter::{FlowKey, ParsedPkt, Prefilter, PrefilterOutput, Verdict};
+use crate::prefilter::flow_table::SkipNet;
 
 // ── public types ──────────────────────────────────────────────────────────────
 
@@ -38,11 +39,12 @@ pub fn run(
     tx: Sender<CaptureEvent>,
     prefilter: Option<Prefilter>,
     passive_dns: Option<PassiveDnsCache>,
+    skip_ips: Vec<SkipNet>,
 ) {
     let cooldown = Duration::from_secs(cfg.ip_cooldown_s);
     let skip_priv = cfg.skip_private;
     let mut seen: HashMap<IpAddr, Instant> = HashMap::new();
-    let mut state = RunState { prefilter, passive_dns, last_drain: Instant::now() };
+    let mut state = RunState { prefilter, passive_dns, last_drain: Instant::now(), skip_ips };
 
     match (&cfg.interface, &cfg.pcap_file) {
         (Some(iface), _) => {
@@ -71,6 +73,7 @@ struct RunState {
     prefilter: Option<Prefilter>,
     passive_dns: Option<PassiveDnsCache>,
     last_drain: Instant,
+    skip_ips: Vec<SkipNet>,
 }
 
 const DRAIN_INTERVAL: Duration = Duration::from_millis(500);
@@ -140,6 +143,9 @@ fn handle_packet(
 
     for ip in parsed.as_ref().map(|p| [Some(p.src), Some(p.dst)]).unwrap_or_else(|| extract_ips(data)).into_iter().flatten() {
         if skip_priv && is_private(ip) {
+            continue;
+        }
+        if state.skip_ips.iter().any(|n| n.contains(ip)) {
             continue;
         }
         let now = Instant::now();

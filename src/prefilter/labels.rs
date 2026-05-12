@@ -73,9 +73,11 @@ impl LabelMap {
 
     pub fn verdict(&self, class_id: u32, confidence: f32, conf_threshold: f32) -> Verdict {
         let Some(e) = self.get(class_id) else { return Verdict::Unknown };
+        if confidence < conf_threshold {
+            return Verdict::Unknown;
+        }
         match e.kind {
             ClassKind::Malicious => Verdict::Malicious,
-            _ if confidence < conf_threshold => Verdict::Unknown,
             ClassKind::Benign => Verdict::Benign,
             ClassKind::Known => Verdict::Known,
         }
@@ -123,8 +125,9 @@ kind = "malicious"
 name = "Other"
 "#;
         let m = LabelMap::from_str(toml).unwrap();
-        // Malicious overrides confidence
-        assert_eq!(m.verdict(1, 0.1, 0.5), Verdict::Malicious);
+        // Malicious still requires minimum confidence
+        assert_eq!(m.verdict(1, 0.1, 0.5), Verdict::Unknown);
+        assert_eq!(m.verdict(1, 0.6, 0.5), Verdict::Malicious);
         // Benign requires confidence
         assert_eq!(m.verdict(0, 0.9, 0.5), Verdict::Benign);
         assert_eq!(m.verdict(0, 0.4, 0.5), Verdict::Unknown);

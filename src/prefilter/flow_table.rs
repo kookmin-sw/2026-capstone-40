@@ -10,6 +10,39 @@ use super::types::{FlowKey, FlowState, ParsedPkt, Side, DIR_C2S, DIR_S2C};
 const TCP_FLAG_SYN: u8 = 0x02;
 const TCP_FLAG_ACK: u8 = 0x10;
 
+/// Parsed entry from `skip_ips` config — supports both exact IPs and CIDR prefixes.
+/// Format: "1.2.3.4" or "10.0.0.0/8".
+#[derive(Debug, Clone)]
+pub enum SkipNet {
+    Exact(std::net::IpAddr),
+    V4Prefix { network: u32, mask: u32 },
+}
+
+impl SkipNet {
+    pub fn parse(s: &str) -> Option<Self> {
+        if let Some((ip_part, len_part)) = s.split_once('/') {
+            let prefix: u32 = len_part.parse().ok()?;
+            if prefix > 32 { return None; }
+            let ip: std::net::Ipv4Addr = ip_part.parse().ok()?;
+            let mask = if prefix == 0 { 0u32 } else { !0u32 << (32 - prefix) };
+            let network = u32::from(ip) & mask;
+            Some(Self::V4Prefix { network, mask })
+        } else {
+            Some(Self::Exact(s.parse().ok()?))
+        }
+    }
+
+    pub fn contains(&self, ip: std::net::IpAddr) -> bool {
+        match (self, ip) {
+            (Self::Exact(a), b) => *a == b,
+            (Self::V4Prefix { network, mask }, std::net::IpAddr::V4(v4)) => {
+                u32::from(v4) & mask == *network
+            }
+            _ => false,
+        }
+    }
+}
+
 pub struct FlowTable {
     flows: HashMap<FlowKey, FlowState>,
     pub ready_dim: usize,
@@ -17,7 +50,7 @@ pub struct FlowTable {
     pub timeout: Duration,
     pub max_flows: usize,
     skip_ports: Vec<u16>,
-    skip_ips: Vec<std::net::IpAddr>,
+    skip_nets: Vec<SkipNet>,
 }
 
 impl FlowTable {
@@ -29,7 +62,19 @@ impl FlowTable {
         skip_ports: Vec<u16>,
         skip_ips: Vec<std::net::IpAddr>,
     ) -> Self {
-        Self { flows: HashMap::new(), ready_dim, select_dir, timeout, max_flows, skip_ports, skip_ips }
+        let skip_nets = skip_ips.into_iter().map(SkipNet::Exact).collect();
+        Self { flows: HashMap::new(), ready_dim, select_dir, timeout, max_flows, skip_ports, skip_nets }
+    }
+
+    pub fn new_with_nets(
+        ready_dim: usize,
+        select_dir: u8,
+        timeout: Duration,
+        max_flows: usize,
+        skip_ports: Vec<u16>,
+        skip_nets: Vec<SkipNet>,
+    ) -> Self {
+        Self { flows: HashMap::new(), ready_dim, select_dir, timeout, max_flows, skip_ports, skip_nets }
     }
 
     pub fn len(&self) -> usize {
@@ -44,7 +89,8 @@ impl FlowTable {
         if self.skip_ports.contains(&server_port) {
             return;
         }
-        if self.skip_ips.contains(&pkt.src) || self.skip_ips.contains(&pkt.dst) {
+        let ip_blocked = |ip| self.skip_nets.iter().any(|n: &SkipNet| n.contains(ip));
+        if ip_blocked(pkt.src) || ip_blocked(pkt.dst) {
             return;
         }
 
@@ -171,6 +217,22 @@ mod tests {
     use super::*;
     use std::net::IpAddr;
     use std::time::Duration;
+
+    #[test]
+    fn skip_net_cidr() {
+        let net = SkipNet::parse("100.64.0.0/10").unwrap();
+        assert!(net.contains("100.64.0.1".parse().unwrap()));
+        assert!(net.contains("100.127.255.255".parse().unwrap()));
+        assert!(!net.contains("100.128.0.0".parse().unwrap()));
+        assert!(!net.contains("1.1.1.1".parse().unwrap()));
+    }
+
+    #[test]
+    fn skip_net_exact() {
+        let net = SkipNet::parse("8.8.8.8").unwrap();
+        assert!(net.contains("8.8.8.8".parse().unwrap()));
+        assert!(!net.contains("8.8.8.9".parse().unwrap()));
+    }
 
     fn ipv4(s: &str) -> IpAddr { s.parse().unwrap() }
 
