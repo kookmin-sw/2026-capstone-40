@@ -1,12 +1,15 @@
+mod baseline;
 mod flow;
 mod ip;
 mod probe;
+mod suspect_prober;
 
 use std::sync::{mpsc::Receiver, Arc, Mutex};
 
 use crate::capture::CaptureEvent;
 use crate::config::Config;
 use crate::ip_to_domain::{LookupConfig, PassiveDnsCache, DEFAULT_DNS_CACHE};
+use crate::prefilter::LabelMap;
 use crate::store::Db;
 
 pub fn spawn_workers(
@@ -14,6 +17,7 @@ pub fn spawn_workers(
     db: Db,
     config: &Config,
     passive_dns: PassiveDnsCache,
+    labels: Option<LabelMap>,
 ) {
     let n = (config.api.workers as usize).max(1);
     let rx = Arc::new(Mutex::new(rx));
@@ -26,12 +30,24 @@ pub fn spawn_workers(
             .unwrap_or_else(|| DEFAULT_DNS_CACHE.into()),
         cache_ttl_days: config.ip_to_domain.cache_ttl_days,
         passive_dns: Some(passive_dns),
+        skip_domain_suffixes: config.prefilter.skip_domain_suffixes.clone(),
+        probe_cache_secs: (config.probe.cache_days * 86400) as i64,
     });
+
+    // Baseline prober: proactively fingerprint known target domains weekly.
+    if let Some(lm) = labels {
+        baseline::spawn(lm, db.clone(), 7);
+    }
+
+    // Suspect prober: probes high-risk domains immediately when inline probe fails.
+    let probe_cache_secs = (config.probe.cache_days * 86400) as i64;
+    let probe_tx = Arc::new(suspect_prober::spawn(db.clone(), config.filter.probe_threshold, probe_cache_secs));
 
     for _ in 0..n {
         let rx         = Arc::clone(&rx);
         let db         = db.clone();
         let lookup_cfg = Arc::clone(&lookup_cfg);
+        let probe_tx   = Arc::clone(&probe_tx);
 
         std::thread::spawn(move || {
             loop {
@@ -41,7 +57,7 @@ pub fn spawn_workers(
                 };
                 match evt {
                     CaptureEvent::Ip(ip_addr) => ip::handle(ip_addr, &db, &lookup_cfg),
-                    CaptureEvent::Flow(_, out) => flow::handle(out, &db, &lookup_cfg),
+                    CaptureEvent::Flow(_, out) => flow::handle(out, &db, &lookup_cfg, &probe_tx),
                 }
             }
             log::info!("worker exiting");
