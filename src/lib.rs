@@ -1,20 +1,17 @@
+pub mod alert;
 pub mod capture;
 pub mod config;
-pub mod html_fingerprint;
-pub mod ip_to_domain;
+pub mod fingerprint;
 pub mod logger;
 pub mod paths;
-pub mod pipeline;
 pub mod prefilter;
+pub mod probe;
+pub mod resolver;
 pub mod store;
 pub mod time;
 pub mod web;
-// pub mod passive_filter;  // Phase 3 (if needed)
-// pub mod active_probe;    // Phase 2
-// pub mod fingerprint;     // Phase 2
-// pub mod detector;        // Phase 4
 
-/// Start the full capture → pipeline → frontend server stack.
+/// Start the full capture → alert pipeline → web server.
 pub fn serve(bind: String, cfg: config::Config) {
     use std::sync::{
         atomic::{AtomicBool, Ordering},
@@ -30,8 +27,7 @@ pub fn serve(bind: String, cfg: config::Config) {
     let (evt_tx, evt_rx) = std::sync::mpsc::channel();
     let capture_running = Arc::new(AtomicBool::new(false));
 
-    // Passive DNS cache — shared between capture thread (writes) and workers (reads).
-    let passive_dns = ip_to_domain::PassiveDnsCache::new();
+    let passive_dns = resolver::PassiveDnsCache::new();
 
     let (prefilter, label_map) = if cfg.prefilter.enabled {
         match prefilter::Prefilter::load(&cfg.prefilter) {
@@ -63,7 +59,7 @@ pub fn serve(bind: String, cfg: config::Config) {
     });
 
     let labels_for_web = label_map.clone();
-    pipeline::spawn_workers(evt_rx, db.clone(), &cfg, passive_dns, label_map);
+    alert::spawn_workers(evt_rx, db.clone(), &cfg, passive_dns, label_map);
 
     web::Server::new(bind, cfg, db, capture_running, labels_for_web)
         .run()

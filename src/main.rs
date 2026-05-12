@@ -121,18 +121,18 @@ fn run_ip_to_domain(args: &[String]) {
         .ip_to_domain
         .cache_path
         .clone()
-        .unwrap_or_else(|| capstone::ip_to_domain::DEFAULT_DNS_CACHE.into());
+        .unwrap_or_else(|| capstone::resolver::DEFAULT_DNS_CACHE.into());
 
     if clear_all || clear_this_ip {
         let target = if clear_all { None } else { Some(ip.as_str()) };
-        match capstone::ip_to_domain::clear_cache(&cache_path, target) {
+        match capstone::resolver::clear_cache(&cache_path, target) {
             Ok(n) if json => eprintln!("cleared_cache_rows={n}"),
             Ok(n) => eprintln!("cleared {n} cache row(s)"),
             Err(e) => die(&format!("failed to clear cache: {e}")),
         }
     }
 
-    let lookup_cfg = capstone::ip_to_domain::LookupConfig {
+    let lookup_cfg = capstone::resolver::LookupConfig {
         sources: cfg.ip_to_domain.sources,
         verify: cfg.ip_to_domain.verify_doh,
         timeout_s: cfg.probe.timeout_s,
@@ -143,7 +143,7 @@ fn run_ip_to_domain(args: &[String]) {
         probe_cache_secs: 0,
     };
 
-    let result = capstone::ip_to_domain::lookup(&ip, &lookup_cfg)
+    let result = capstone::resolver::lookup(&ip, &lookup_cfg)
         .unwrap_or_else(|e| die(&format!("lookup failed: {e}")));
 
     if json {

@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use pcap::{Active, Capture, Offline};
 
 use crate::config::CaptureConfig;
-use crate::ip_to_domain::PassiveDnsCache;
+use crate::resolver::PassiveDnsCache;
 use crate::prefilter::{FlowKey, ParsedPkt, Prefilter, PrefilterOutput, Verdict};
 use crate::prefilter::flow_table::SkipNet;
 
