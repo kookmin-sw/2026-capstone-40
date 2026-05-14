@@ -113,11 +113,8 @@ fn pump_file(
     tx:        &Sender<CaptureEvent>,
     state:     &mut RunState,
 ) {
-    loop {
-        match cap.next_packet() {
-            Ok(pkt) => handle_packet(pkt.data, cooldown, skip_priv, seen, tx, state),
-            Err(_)  => break, // EOF or error — done
-        }
+    while let Ok(pkt) = cap.next_packet() {
+        handle_packet(pkt.data, cooldown, skip_priv, seen, tx, state);
     }
     // Final drain — pcap exhausted, surface any pending flows.
     if let Some(pf) = state.prefilter.as_mut() {
@@ -149,7 +146,10 @@ fn handle_packet(
             continue;
         }
         let now = Instant::now();
-        if seen.get(&ip).map_or(true, |t| now.duration_since(*t) >= cooldown) {
+        if seen
+            .get(&ip)
+            .is_none_or(|t| now.duration_since(*t) >= cooldown)
+        {
             seen.insert(ip, now);
             if tx.send(CaptureEvent::Ip(ip)).is_err() {
                 return; // receiver gone

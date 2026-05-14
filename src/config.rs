@@ -22,16 +22,33 @@ pub struct Config {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct StoreConfig {
+    #[serde(default = "StoreConfig::default_db_path")]
     pub db_path: String,
+    #[serde(default = "StoreConfig::default_dns_db_path")]
+    pub dns_db_path: String,
+    #[serde(default = "StoreConfig::default_snapshot_dir")]
     pub snapshot_dir: String,
 }
 
 impl Default for StoreConfig {
     fn default() -> Self {
         Self {
-            db_path: "~/.local/share/capstone/capstone.db".into(),
-            snapshot_dir: "~/.local/share/capstone/snapshots".into(),
+            db_path: Self::default_db_path(),
+            dns_db_path: Self::default_dns_db_path(),
+            snapshot_dir: Self::default_snapshot_dir(),
         }
+    }
+}
+
+impl StoreConfig {
+    fn default_db_path() -> String {
+        "~/.local/share/capstone/capstone.db".into()
+    }
+    fn default_dns_db_path() -> String {
+        "~/.local/share/capstone/dns_cache.db".into()
+    }
+    fn default_snapshot_dir() -> String {
+        "~/.local/share/capstone/snapshots".into()
     }
 }
 
@@ -72,7 +89,9 @@ impl Default for ProbeConfig {
     }
 }
 
-fn default_probe_cache_days() -> u64 { 7 }
+fn default_probe_cache_days() -> u64 {
+    7
+}
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct FilterConfig {
@@ -188,11 +207,21 @@ fn default_skip_ports() -> Vec<u16> {
     vec![22, 23, 25, 53, 110, 123, 143, 389, 3478, 5353]
 }
 
-fn default_length_dim() -> usize { 10 }
-fn default_select_dir() -> u8 { 1 }
-fn default_flow_timeout() -> u64 { 30 }
-fn default_max_flows() -> usize { 10_000 }
-fn default_conf_threshold() -> f32 { 0.5 }
+fn default_length_dim() -> usize {
+    10
+}
+fn default_select_dir() -> u8 {
+    1
+}
+fn default_flow_timeout() -> u64 {
+    30
+}
+fn default_max_flows() -> usize {
+    10_000
+}
+fn default_conf_threshold() -> f32 {
+    0.5
+}
 
 fn default_ip_cooldown() -> u64 {
     60
