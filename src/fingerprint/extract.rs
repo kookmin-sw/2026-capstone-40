@@ -288,8 +288,7 @@ fn is_self_closing_tag(bytes: &[u8], cursor: usize) -> bool {
     bytes[cursor..tag_end]
         .iter()
         .rev()
-        .skip_while(|byte| byte.is_ascii_whitespace() || **byte == b'>')
-        .next()
+        .find(|byte| !byte.is_ascii_whitespace() && **byte != b'>')
         == Some(&b'/')
 }
 
