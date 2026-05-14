@@ -6,6 +6,7 @@
 //! subsequent entries are `-(ackᵢ - ackᵢ₋₁)` with these rules:
 //!   - `diff <= 0` → skip (delta vector grows shorter, trailing zeros remain)
 //!   - `diff > 100000` → push 0 (different from skip — slot is consumed)
+//!
 //! Deltas are computed in i64 to avoid u32 wrap.
 
 pub fn extract_ari(

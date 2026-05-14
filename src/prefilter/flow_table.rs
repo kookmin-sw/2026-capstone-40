@@ -81,6 +81,10 @@ impl FlowTable {
         self.flows.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.flows.is_empty()
+    }
+
     pub fn ingest(&mut self, pkt: &ParsedPkt) {
         if pkt.proto != 6 {
             return;
@@ -236,6 +240,7 @@ mod tests {
 
     fn ipv4(s: &str) -> IpAddr { s.parse().unwrap() }
 
+    #[allow(clippy::too_many_arguments)]
     fn pkt(
         src: IpAddr, dst: IpAddr, sport: u16, dport: u16,
         len: u32, ack: u32, flags: u8, ts: Instant,

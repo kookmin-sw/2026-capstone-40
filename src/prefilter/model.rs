@@ -185,6 +185,7 @@ fn softmax(raw: &[f32]) -> Vec<f32> {
 /// Parse XGBoost `base_score` which in 3.x is stored as either:
 ///   - A plain float string `"0.5"` (scalar, applies uniformly)
 ///   - A bracketed list string `"[a,b,c,d]"` (per-class vector)
+///
 /// XGBoost 3.x applies the per-class base score in logit/log space depending on
 /// objective; for multi:softprob the values are already in the correct additive
 /// space used during gradient boosting, so we add them directly to raw scores.

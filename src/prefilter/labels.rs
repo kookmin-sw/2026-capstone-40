@@ -2,6 +2,7 @@
 //! XGBoost model. Order MUST match `model.classes_` from the training pipeline.
 
 use std::path::Path;
+use std::str::FromStr;
 
 use serde::Deserialize;
 
@@ -57,15 +58,12 @@ impl From<toml::de::Error> for LoadError { fn from(e: toml::de::Error) -> Self {
 impl LabelMap {
     pub fn load(path: &Path) -> Result<Self, LoadError> {
         let text = std::fs::read_to_string(path)?;
-        Self::from_str(&text)
-    }
-
-    pub fn from_str(text: &str) -> Result<Self, LoadError> {
-        let lf: LabelFile = toml::from_str(text)?;
-        Ok(Self { entries: lf.classes })
+        text.parse()
     }
 
     pub fn len(&self) -> usize { self.entries.len() }
+
+    pub fn is_empty(&self) -> bool { self.entries.is_empty() }
 
     pub fn get(&self, class_id: u32) -> Option<&ClassEntry> {
         self.entries.get(class_id as usize)
@@ -81,6 +79,15 @@ impl LabelMap {
             ClassKind::Benign => Verdict::Benign,
             ClassKind::Known => Verdict::Known,
         }
+    }
+}
+
+impl FromStr for LabelMap {
+    type Err = LoadError;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        let lf: LabelFile = toml::from_str(text)?;
+        Ok(Self { entries: lf.classes })
     }
 }
 
@@ -103,7 +110,7 @@ kind = "malicious"
 [[classes]]
 name = "Zoom"
 "#;
-        let m = LabelMap::from_str(toml).unwrap();
+        let m: LabelMap = toml.parse().unwrap();
         assert_eq!(m.len(), 3);
         assert_eq!(m.get(0).unwrap().kind, ClassKind::Benign);
         assert_eq!(m.get(2).unwrap().kind, ClassKind::Known);
@@ -124,7 +131,7 @@ kind = "malicious"
 [[classes]]
 name = "Other"
 "#;
-        let m = LabelMap::from_str(toml).unwrap();
+        let m: LabelMap = toml.parse().unwrap();
         // Malicious still requires minimum confidence
         assert_eq!(m.verdict(1, 0.1, 0.5), Verdict::Unknown);
         assert_eq!(m.verdict(1, 0.6, 0.5), Verdict::Malicious);
