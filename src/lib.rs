@@ -1,5 +1,6 @@
 pub mod alert;
 pub mod capture;
+pub mod cli;
 pub mod config;
 pub mod fingerprint;
 pub mod logger;
@@ -11,57 +12,6 @@ pub mod store;
 pub mod time;
 pub mod web;
 
-/// Start the full capture → alert pipeline → web server.
-pub fn serve(bind: String, cfg: config::Config) {
-    use std::sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    };
+mod app;
 
-    let db = store::open(&cfg.store.db_path).unwrap_or_else(|e| {
-        log::error!("failed to open DB: {e}");
-        std::process::exit(1);
-    });
-
-    let cfg = Arc::new(cfg);
-    let (evt_tx, evt_rx) = std::sync::mpsc::channel();
-    let capture_running = Arc::new(AtomicBool::new(false));
-
-    let passive_dns = resolver::PassiveDnsCache::new();
-
-    let (prefilter, label_map) = if cfg.prefilter.enabled {
-        match prefilter::Prefilter::load(&cfg.prefilter) {
-            Ok(pf) => {
-                log::info!("prefilter loaded ({} flow cap)", cfg.prefilter.max_flows);
-                let lm = pf.labels().clone();
-                (Some(pf), Some(lm))
-            }
-            Err(e) => {
-                log::error!("prefilter disabled: {e}");
-                (None, None)
-            }
-        }
-    } else {
-        (None, None)
-    };
-
-    let cap_cfg = cfg.capture.clone();
-    let capture_running_for_thread = Arc::clone(&capture_running);
-    let passive_dns_for_capture = passive_dns.clone();
-    let skip_ips_for_capture: Vec<prefilter::flow_table::SkipNet> = cfg.prefilter.skip_ips
-        .iter()
-        .filter_map(|s| prefilter::flow_table::SkipNet::parse(s))
-        .collect();
-    std::thread::spawn(move || {
-        capture_running_for_thread.store(true, Ordering::Release);
-        capture::run(&cap_cfg, evt_tx, prefilter, Some(passive_dns_for_capture), skip_ips_for_capture);
-        capture_running_for_thread.store(false, Ordering::Release);
-    });
-
-    let labels_for_web = label_map.clone();
-    alert::spawn_workers(evt_rx, db.clone(), &cfg, passive_dns, label_map);
-
-    web::Server::new(bind, cfg, db, capture_running, labels_for_web)
-        .run()
-        .unwrap();
-}
+pub use app::serve;
