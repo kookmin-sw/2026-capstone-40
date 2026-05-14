@@ -1,15 +1,15 @@
-use rusqlite::{Connection, Result, params};
+use rusqlite::{params, Connection, Result};
 
 use super::types::Alert;
 
 fn map_alert(r: &rusqlite::Row) -> rusqlite::Result<Alert> {
     Ok(Alert {
-        id:           r.get(0)?,
-        severity:     r.get::<_, i64>(1)? as u8,
-        alert_type:   r.get(2)?,
-        domain:       r.get(3)?,
-        detail:       r.get(4)?,
-        ts:           r.get(5)?,
+        id: r.get(0)?,
+        severity: r.get::<_, i64>(1)? as u8,
+        alert_type: r.get(2)?,
+        domain: r.get(3)?,
+        detail: r.get(4)?,
+        ts: r.get(5)?,
         acknowledged: r.get::<_, i64>(6)? != 0,
     })
 }
@@ -18,37 +18,84 @@ pub fn recent_alerts(conn: &Connection, limit: usize) -> Vec<Alert> {
     let mut stmt = match conn.prepare(
         "SELECT id,severity,alert_type,domain,detail,ts,acknowledged
          FROM alerts ORDER BY ts DESC LIMIT ?1",
-    ) { Ok(s) => s, Err(_) => return vec![] };
+    ) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
     stmt.query_map([limit as i64], map_alert)
-        .ok().map(|r| r.filter_map(|x| x.ok()).collect()).unwrap_or_default()
+        .ok()
+        .map(|r| r.filter_map(|x| x.ok()).collect())
+        .unwrap_or_default()
 }
 
 pub fn all_alerts(conn: &Connection, include_acked: bool) -> Vec<Alert> {
-    let sql = if include_acked {
-        "SELECT id,severity,alert_type,domain,detail,ts,acknowledged FROM alerts ORDER BY ts DESC"
-    } else {
-        "SELECT id,severity,alert_type,domain,detail,ts,acknowledged FROM alerts WHERE acknowledged=0 ORDER BY ts DESC"
+    paged_alerts(conn, include_acked, 0, 0, 500)
+}
+
+pub fn paged_alerts(
+    conn: &Connection,
+    include_acked: bool,
+    min_severity: u8,
+    offset: usize,
+    limit: usize,
+) -> Vec<Alert> {
+    let sql = match (include_acked, min_severity) {
+        (true,  0) => "SELECT id,severity,alert_type,domain,detail,ts,acknowledged FROM alerts ORDER BY ts DESC LIMIT ?1 OFFSET ?2".to_owned(),
+        (false, 0) => "SELECT id,severity,alert_type,domain,detail,ts,acknowledged FROM alerts WHERE acknowledged=0 ORDER BY ts DESC LIMIT ?1 OFFSET ?2".to_owned(),
+        (true,  _) => format!("SELECT id,severity,alert_type,domain,detail,ts,acknowledged FROM alerts WHERE severity>={min_severity} ORDER BY ts DESC LIMIT ?1 OFFSET ?2"),
+        (false, _) => format!("SELECT id,severity,alert_type,domain,detail,ts,acknowledged FROM alerts WHERE acknowledged=0 AND severity>={min_severity} ORDER BY ts DESC LIMIT ?1 OFFSET ?2"),
     };
-    let mut stmt = match conn.prepare(sql) { Ok(s) => s, Err(_) => return vec![] };
-    stmt.query_map([], map_alert)
-        .ok().map(|r| r.filter_map(|x| x.ok()).collect()).unwrap_or_default()
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+    stmt.query_map(rusqlite::params![limit as i64, offset as i64], map_alert)
+        .ok()
+        .map(|r| r.filter_map(|x| x.ok()).collect())
+        .unwrap_or_default()
+}
+
+pub fn alert_count(conn: &Connection, include_acked: bool, min_severity: u8) -> usize {
+    let sql = match (include_acked, min_severity) {
+        (true, 0) => "SELECT COUNT(*) FROM alerts".to_owned(),
+        (false, 0) => "SELECT COUNT(*) FROM alerts WHERE acknowledged=0".to_owned(),
+        (true, _) => format!("SELECT COUNT(*) FROM alerts WHERE severity>={min_severity}"),
+        (false, _) => {
+            format!("SELECT COUNT(*) FROM alerts WHERE acknowledged=0 AND severity>={min_severity}")
+        }
+    };
+    conn.query_row(&sql, [], |r| r.get::<_, i64>(0))
+        .unwrap_or(0)
+        .max(0) as usize
 }
 
 pub fn domain_alerts(conn: &Connection, domain: &str) -> Vec<Alert> {
     let mut stmt = match conn.prepare(
         "SELECT id,severity,alert_type,domain,detail,ts,acknowledged
          FROM alerts WHERE domain=?1 ORDER BY ts DESC",
-    ) { Ok(s) => s, Err(_) => return vec![] };
+    ) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
     stmt.query_map([domain], map_alert)
-        .ok().map(|r| r.filter_map(|x| x.ok()).collect()).unwrap_or_default()
+        .ok()
+        .map(|r| r.filter_map(|x| x.ok()).collect())
+        .unwrap_or_default()
 }
 
 pub fn severity_counts(conn: &Connection) -> Vec<(u8, u64)> {
-    let mut stmt = match conn.prepare(
-        "SELECT severity, COUNT(*) FROM alerts WHERE acknowledged=0 GROUP BY severity",
-    ) { Ok(s) => s, Err(_) => return vec![] };
-    stmt.query_map([], |r| Ok((r.get::<_, i64>(0)? as u8, r.get::<_, i64>(1)? as u64)))
-        .ok().map(|r| r.filter_map(|x| x.ok()).collect()).unwrap_or_default()
+    let mut stmt = match conn
+        .prepare("SELECT severity, COUNT(*) FROM alerts WHERE acknowledged=0 GROUP BY severity")
+    {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+    stmt.query_map([], |r| {
+        Ok((r.get::<_, i64>(0)? as u8, r.get::<_, i64>(1)? as u64))
+    })
+    .ok()
+    .map(|r| r.filter_map(|x| x.ok()).collect())
+    .unwrap_or_default()
 }
 
 pub fn insert_alert(
@@ -70,9 +117,11 @@ pub fn insert_alert(
 /// Replay domain's alerts oldest→newest, accumulate risk score.
 /// Returns (ts, score) pairs — suitable for plotting a risk trend.
 pub fn domain_risk_trend(conn: &Connection, domain: &str) -> Vec<(i64, u32)> {
-    let mut stmt = match conn.prepare(
-        "SELECT alert_type, ts FROM alerts WHERE domain=?1 ORDER BY ts ASC",
-    ) { Ok(s) => s, Err(_) => return vec![] };
+    let mut stmt =
+        match conn.prepare("SELECT alert_type, ts FROM alerts WHERE domain=?1 ORDER BY ts ASC") {
+            Ok(s) => s,
+            Err(_) => return vec![],
+        };
 
     let rows: Vec<(String, i64)> = stmt
         .query_map([domain], |r| Ok((r.get(0)?, r.get(1)?)))
@@ -87,7 +136,7 @@ pub fn domain_risk_trend(conn: &Connection, domain: &str) -> Vec<(i64, u32)> {
     }
     for (alert_type, ts) in rows {
         let delta: u32 = match alert_type.as_str() {
-            "PREFILTER_MALICIOUS"  => 60,
+            "PREFILTER_MALICIOUS" => 60,
             "PREFILTER_CLASSIFIED" => 10,
             _ => 5,
         };

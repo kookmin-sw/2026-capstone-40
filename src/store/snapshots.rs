@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result, params};
+use rusqlite::{params, Connection, Result};
 
 use super::types::StoredFingerprint;
 
@@ -16,9 +16,10 @@ pub fn save_fingerprint(
          VALUES (?1,NULL,NULL,?2,?2)",
         params![domain, ts],
     )?;
-    let domain_id: i64 = conn.query_row(
-        "SELECT id FROM domains WHERE domain=?1", [domain], |r| r.get(0),
-    )?;
+    let domain_id: i64 =
+        conn.query_row("SELECT id FROM domains WHERE domain=?1", [domain], |r| {
+            r.get(0)
+        })?;
     conn.execute(
         "INSERT INTO snapshots (domain_id,ts,title,h1_text,simhash_text,html_hash)
          VALUES (?1,?2,?3,?4,?5,?6)",
@@ -34,14 +35,17 @@ pub fn get_fingerprints(conn: &Connection, domain: &str, limit: usize) -> Vec<St
          JOIN domains d ON d.id = s.domain_id
          WHERE d.domain=?1 AND s.simhash_text IS NOT NULL
          ORDER BY s.ts DESC LIMIT ?2",
-    ) { Ok(s) => s, Err(_) => return vec![] };
+    ) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
 
     stmt.query_map(params![domain, limit as i64], |r| {
         Ok(StoredFingerprint {
-            simhash:   r.get::<_, i64>(0)? as u64,
+            simhash: r.get::<_, i64>(0)? as u64,
             html_hash: r.get(1).unwrap_or_default(),
-            title:     r.get(2)?,
-            ts:        r.get(3)?,
+            title: r.get(2)?,
+            ts: r.get(3)?,
         })
     })
     .ok()
@@ -58,10 +62,24 @@ pub fn snapshot_count(conn: &Connection, domain: &str) -> usize {
     .unwrap_or(0) as usize
 }
 
-/// Unix timestamp of the most recent probe run for `domain`, or None if never probed.
+/// Unix timestamp of the most recent SUCCESSFUL probe for `domain`.
+/// Failed probes are not counted — they use FAIL_COOLDOWN (5 min) in the suspect prober,
+/// not the full cache_secs window. This prevents a single failed probe from blocking
+/// re-probing for 7 days.
 pub fn last_probe_ts(conn: &Connection, domain: &str) -> Option<i64> {
     conn.query_row(
-        "SELECT MAX(ts) FROM probe_runs WHERE domain=?1",
+        "SELECT MAX(ts) FROM probe_runs WHERE domain=?1 AND success=1",
+        [domain],
+        |r| r.get::<_, Option<i64>>(0),
+    )
+    .ok()
+    .flatten()
+}
+
+/// Unix timestamp of most recent FAILED probe (success=0), or None.
+pub fn last_failed_probe_ts(conn: &Connection, domain: &str) -> Option<i64> {
+    conn.query_row(
+        "SELECT MAX(ts) FROM probe_runs WHERE domain=?1 AND success=0",
         [domain],
         |r| r.get::<_, Option<i64>>(0),
     )

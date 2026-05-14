@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use rusqlite::{Connection, Result, params};
+use rusqlite::{Connection, Result};
 
 use crate::time::now_secs;
 
@@ -16,10 +16,6 @@ pub fn prefilter_stats(conn: &Connection) -> PrefilterStats {
         unknown:    q("PREFILTER_UNKNOWN"),
         classified: q("PREFILTER_CLASSIFIED"),
     }
-}
-
-pub fn severity_counts(conn: &Connection) -> Vec<(u8, u64)> {
-    super::alerts::severity_counts(conn)
 }
 
 pub fn pipeline_status(conn: &Connection) -> Pipeline {
