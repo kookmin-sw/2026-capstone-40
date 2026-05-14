@@ -53,8 +53,10 @@
         <strong>
           {% if let Some(s) = snapshots.first() %}
             <span style="color:var(--risk-low);font-size:0.82rem">{{ s.ts|fmt_ts }}</span>
+          {% else if let Some(ts) = last_failed_probe %}
+            <span class="badge sev-3" style="font-size:0.72rem" title="{{ ts|fmt_ts }}">unreachable</span>
           {% else %}
-            <span class="badge sev-3" style="font-size:0.72rem">pending</span>
+            <span class="badge sev-2" style="font-size:0.72rem">pending</span>
           {% endif %}
         </strong>
       </div>

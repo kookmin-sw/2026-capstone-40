@@ -7,11 +7,23 @@
 {% block content %}
 <div class="view-header">
   <h2>Alerts</h2>
-  <span class="sub">{{ alerts.len() }} alert{% if alerts.len() != 1 %}s{% endif %}</span>
+  <span class="sub">{{ total }} total{% if total_pages > 1 %} · page {{ page }}/{{ total_pages }}{% endif %}</span>
   <span class="spacer"></span>
   <div class="filter-bar">
-    <a href="/alerts"          class="btn-ghost {% if !show_acked %}active{% endif %}">Unacked</a>
-    <a href="/alerts?ack=show" class="btn-ghost {% if show_acked  %}active{% endif %}">All</a>
+    <a href="/alerts{% if show_acked %}?ack=show{% endif %}" class="btn-ghost {% if !show_acked %}active{% endif %}">Unacked</a>
+    <a href="/alerts?ack=show{% if min_severity > 0 %}&sev={{ min_severity }}{% endif %}" class="btn-ghost {% if show_acked %}active{% endif %}">All</a>
+    <select onchange="
+      var p = new URLSearchParams(location.search);
+      p.set('sev', this.value);
+      p.delete('page');
+      location.href='/alerts?' + p.toString()
+    " style="margin-left:0.5rem">
+      <option value="0" {% if min_severity == 0 %}selected{% endif %}>All severities</option>
+      <option value="2" {% if min_severity == 2 %}selected{% endif %}>≥ Low (2+)</option>
+      <option value="3" {% if min_severity == 3 %}selected{% endif %}>≥ Medium (3+)</option>
+      <option value="4" {% if min_severity == 4 %}selected{% endif %}>≥ High (4+)</option>
+      <option value="5" {% if min_severity == 5 %}selected{% endif %}>Critical only</option>
+    </select>
   </div>
 </div>
 
@@ -74,4 +86,26 @@
     </table>
   {% endif %}
 </div>
+
+{% if total_pages > 1 %}
+<div style="display:flex;align-items:center;justify-content:center;gap:0.4rem;padding:1rem;flex-wrap:wrap">
+  {% if page > 1 %}
+    <a href="/alerts?{% if show_acked %}ack=show&{% endif %}{% if min_severity > 0 %}sev={{ min_severity }}&{% endif %}page={{ page - 1 }}" class="btn-ghost">← Prev</a>
+  {% endif %}
+
+  {% for p in 1..=total_pages %}
+    {% if p == page %}
+      <span class="btn-ghost active" style="min-width:2rem;text-align:center">{{ p }}</span>
+    {% else if p == 1 || p == total_pages || (p >= page - 2 && p <= page + 2) %}
+      <a href="/alerts?{% if show_acked %}ack=show&{% endif %}{% if min_severity > 0 %}sev={{ min_severity }}&{% endif %}page={{ p }}" class="btn-ghost" style="min-width:2rem;text-align:center">{{ p }}</a>
+    {% else if p == page - 3 || p == page + 3 %}
+      <span class="muted" style="padding:0 0.25rem">…</span>
+    {% endif %}
+  {% endfor %}
+
+  {% if page < total_pages %}
+    <a href="/alerts?{% if show_acked %}ack=show&{% endif %}{% if min_severity > 0 %}sev={{ min_severity }}&{% endif %}page={{ page + 1 }}" class="btn-ghost">Next →</a>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}
