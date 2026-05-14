@@ -13,19 +13,19 @@ pub fn fetch(ip: &str, cache: &Cache, timeout_s: f64, ttl_s: i64) -> ProviderRes
     let now = now_secs();
     let cached = cache.get("hackertarget", ip);
 
-    if let Some((ts, _, Some(ref body))) = cached {
-        if cache_fresh(now, ts, ttl_s) {
-            let domains = String::from_utf8_lossy(body)
-                .lines()
-                .filter(|l| looks_like_domain(l))
-                .map(norm_domain)
-                .collect();
-            return ProviderResult {
-                provider: "hackertarget".into(),
-                domains,
-                ..Default::default()
-            };
-        }
+    if let Some((ts, _, Some(ref body))) = cached
+        && cache_fresh(now, ts, ttl_s)
+    {
+        let domains = String::from_utf8_lossy(body)
+            .lines()
+            .filter(|l| looks_like_domain(l))
+            .map(norm_domain)
+            .collect();
+        return ProviderResult {
+            provider: "hackertarget".into(),
+            domains,
+            ..Default::default()
+        };
     }
 
     // 1-second throttle between live calls
@@ -56,7 +56,7 @@ pub fn fetch(ip: &str, cache: &Cache, timeout_s: f64, ttl_s: i64) -> ProviderRes
             }
             let mut domains = std::collections::HashSet::new();
             for line in trimmed.lines() {
-                let d = line.trim().splitn(2, ',').next().unwrap_or("").trim();
+                let d = line.trim().split(',').next().unwrap_or("").trim();
                 if looks_like_domain(d) {
                     domains.insert(norm_domain(d));
                 }

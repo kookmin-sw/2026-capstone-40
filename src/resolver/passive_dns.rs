@@ -33,7 +33,7 @@ impl PassiveDnsCache {
 
     /// Insert a (ip, domain) mapping observed from a DNS response.
     pub fn insert(&self, ip: IpAddr, domain: String, ttl_s: u32) {
-        let ttl = Duration::from_secs(ttl_s.max(30).min(3600) as u64);
+        let ttl = Duration::from_secs(ttl_s.clamp(30, 3600) as u64);
         let rec = Record {
             domain,
             expires: Instant::now() + ttl,
@@ -46,11 +46,11 @@ impl PassiveDnsCache {
     /// Return fresh domain names for an IP. Expired records are lazily removed.
     pub fn lookup(&self, ip: &IpAddr) -> Vec<String> {
         let now = Instant::now();
-        if let Ok(mut m) = self.0.write() {
-            if let Some(recs) = m.get_mut(ip) {
-                recs.retain(|r| r.expires > now);
-                return recs.iter().map(|r| r.domain.clone()).collect();
-            }
+        if let Ok(mut m) = self.0.write()
+            && let Some(recs) = m.get_mut(ip)
+        {
+            recs.retain(|r| r.expires > now);
+            return recs.iter().map(|r| r.domain.clone()).collect();
         }
         vec![]
     }
@@ -78,6 +78,12 @@ impl PassiveDnsCache {
             domains,
             ..Default::default()
         }
+    }
+}
+
+impl Default for PassiveDnsCache {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -233,10 +239,10 @@ fn parse_dns_records(
                 addresses.push((domain, IpAddr::V6(Ipv6Addr::from(b)), ttl));
             }
             5 => {
-                if let Some((target, _)) = read_name(msg, rdata_pos) {
-                    if looks_like_domain(&target) {
-                        cnames.push((domain, norm_domain(&target)));
-                    }
+                if let Some((target, _)) = read_name(msg, rdata_pos)
+                    && looks_like_domain(&target)
+                {
+                    cnames.push((domain, norm_domain(&target)));
                 }
             }
             _ => {}
@@ -311,7 +317,7 @@ fn read_name(msg: &[u8], pos: usize) -> Option<(String, usize)> {
             if end_pos.is_none() {
                 end_pos = Some(cur + 2);
             }
-            let offset = (((len & 0x3F) as usize) << 8) | msg[cur + 1] as usize;
+            let offset = ((len & 0x3F) << 8) | msg[cur + 1] as usize;
             cur = offset;
             hops += 1;
             if hops > 64 {
