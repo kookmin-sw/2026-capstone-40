@@ -10,22 +10,28 @@
 use std::time::Duration;
 
 use crate::prefilter::{ClassKind, LabelMap};
+use crate::resolver::PassiveDnsCache;
 use crate::store::{self, Db};
 use crate::time::now_secs;
 
 use super::probe_baseline;
 
-const RETRY_INTERVAL: Duration = Duration::from_secs(3600);      // 1h retry for no-baseline
+const RETRY_INTERVAL: Duration = Duration::from_secs(3600); // 1h retry for no-baseline
 const REFRESH_INTERVAL: Duration = Duration::from_secs(6 * 3600); // 6h check for stale
 
-pub fn spawn(labels: LabelMap, db: Db, probe_interval_days: u64) {
+pub fn spawn(
+    labels: LabelMap,
+    db: Db,
+    probe_interval_days: u64,
+    passive_dns: Option<PassiveDnsCache>,
+) {
     std::thread::Builder::new()
         .name("baseline-prober".into())
-        .spawn(move || run(labels, db, probe_interval_days))
+        .spawn(move || run(labels, db, probe_interval_days, passive_dns))
         .ok();
 }
 
-fn run(labels: LabelMap, db: Db, probe_interval_days: u64) {
+fn run(labels: LabelMap, db: Db, probe_interval_days: u64, passive_dns: Option<PassiveDnsCache>) {
     let stale_secs = (probe_interval_days * 86400) as i64;
     let mut last_stale_check = std::time::Instant::now();
 
@@ -36,13 +42,20 @@ fn run(labels: LabelMap, db: Db, probe_interval_days: u64) {
 
         if check_stale {
             last_stale_check = now_inst;
-            log::info!("baseline: stale-check {} domains (interval={}d)", domains.len(), probe_interval_days);
+            log::info!(
+                "baseline: stale-check {} domains (interval={}d)",
+                domains.len(),
+                probe_interval_days
+            );
         }
 
         let mut probed = 0u32;
         for domain in &domains {
             let needs = {
-                let conn = match db.lock() { Ok(c) => c, Err(_) => continue };
+                let conn = match db.lock() {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
                 let count = store::snapshot_count(&conn, domain);
                 if count == 0 {
                     true // always retry no-baseline domains
@@ -62,7 +75,7 @@ fn run(labels: LabelMap, db: Db, probe_interval_days: u64) {
                 if let Ok(conn) = db.lock() {
                     store::upsert_domain(&conn, domain, "", now).ok();
                 }
-                probe_baseline(domain, &db, now, None);
+                probe_baseline(domain, &db, now, passive_dns.as_ref());
                 probed += 1;
             }
         }
@@ -75,12 +88,15 @@ fn run(labels: LabelMap, db: Db, probe_interval_days: u64) {
     }
 }
 
-/// Collect unique domain names from typical_domains of Malicious + Known entries.
+/// Collect unique domain names from typical_domains of all classified entries.
 fn collect_domains(labels: &LabelMap) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for entry in &labels.entries {
-        if matches!(entry.kind, ClassKind::Malicious | ClassKind::Known) {
+        if matches!(
+            entry.kind,
+            ClassKind::Malicious | ClassKind::Known | ClassKind::Benign
+        ) {
             for d in &entry.typical_domains {
                 if !d.is_empty() && seen.insert(d.clone()) {
                     out.push(d.clone());
@@ -89,20 +105,4 @@ fn collect_domains(labels: &LabelMap) -> Vec<String> {
         }
     }
     out
-}
-
-fn should_probe(domain: &str, db: &Db, stale_secs: i64) -> bool {
-    let conn = match db.lock() {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
-    // No snapshot at all → must probe regardless of probe_runs table.
-    if store::snapshot_count(&conn, domain) == 0 {
-        return true;
-    }
-    // Has snapshots: probe again only when stale (weekly refresh).
-    match store::last_probe_ts(&conn, domain) {
-        None => false, // snapshots exist but no probe_run record — still usable, skip
-        Some(last) => now_secs() - last >= stale_secs,
-    }
 }
