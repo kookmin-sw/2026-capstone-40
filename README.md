@@ -10,6 +10,10 @@
 
 ## 프로젝트 소개
 
+본 시스템의 전체 구조는 다음과 같습니다.
+
+![CB-HWI System Architecture](assets/system_architecture.png)
+
 본 시스템은 두 단계로 구성됩니다. 
 
 1단계에서는 암호화된 트래픽의 패킷 길이 시퀀스와 ACK delta 등의 메타데이터를 추출하고, XGBoost 기반으로 의심 IP를 선별합니다. 
