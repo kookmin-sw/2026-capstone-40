@@ -1,9 +1,12 @@
 # Capstone 40
 
-암호화된 트래픽의 메타데이터를 이용해 의심스러운 웹 도메인을 탐지하는
-네트워크 모니터링 프로토타입입니다. Rust 서비스가 패킷을 수집하고,
-ARI/XGBoost 기반 prefilter로 TCP 흐름을 분류한 뒤, IP를 도메인 후보로
-변환하여 SQLite에 경고를 저장하고 웹 대시보드로 보여줍니다.
+**CB-HWI: Content-based Harmful Website Identification**
+
+암호화된 웹 트래픽 환경에서 유해 웹사이트 접속을 식별하기 위한 네트워크 모니터링 및 콘텐츠 기반 분석 시스템입니다.
+
+본 시스템은 암호화된 트래픽의 패킷 메타데이터를 이용해 의심 IP를 선별하고, 선별된 IP에 대해 reverse IP lookup과 HTML 구조 및 콘텐츠 유사도 분석을 수행하여 접속 대상이 유해 웹사이트인지 식별합니다.
+
+본 프로젝트에서는 이 중 reverse IP lookup과 HTML 구조·콘텐츠 유사도 분석을 활용한 active probing 기능 구현에 중점을 두었습니다.
 
 ## 프로젝트 소개
 
