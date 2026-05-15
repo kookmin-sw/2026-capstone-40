@@ -12,7 +12,7 @@
 
 본 시스템의 전체 구조는 다음과 같습니다.
 
-![CB-HWI System Architecture](assets/system_architecture.png)
+![CB-HWI System Architecture](asset/system_architecture.png)
 
 본 시스템은 두 단계로 구성됩니다. 
 
@@ -25,11 +25,13 @@
 주요 구성:
 
 - `src/capture.rs` - 패킷 캡처 및 파싱
-- `src/prefilter/` - ARI 특징 추출 및 XGBoost JSON 추론
-- `src/resolver/` - passive DNS, PTR, HackerTarget, 캐시 조회
-- `src/alert/` - 경고 생성 및 위험도 업데이트
-- `src/web/`, `templates/` - 웹 대시보드와 경고 페이지
-- `scripts/` - 데이터 추출, 학습, 모델 export 파이프라인
+- `src/prefilter/` - 패킷 메타데이터 기반 특징 추출 및 XGBoost prefilter 추론
+- `src/probe/` - 의심 IP 기반 active probing 수행
+- `src/resolver/` - passive DNS, PTR, HackerTarget, 캐시 기반 도메인 후보 조회
+- `src/fingerprint/` - HTML 구조 및 콘텐츠 기반 fingerprint 분석
+- `src/alert/`, `src/store/` - 경고 생성, 위험도 업데이트 및 SQLite 저장
+- `src/web/`, `templates/`, `static/` - 웹 대시보드, 템플릿 및 정적 파일
+- `utils/` - IP-to-domain 조회, HTML 유사도 분석, 웹페이지 수집 유틸리티
 
 ## 소개 영상
 
