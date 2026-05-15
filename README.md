@@ -1,77 +1,78 @@
-[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/Lvs6kcL8)
-# Welcome to GitHub
+# Capstone 40
 
-캡스톤 팀 생성을 축하합니다.
+암호화된 트래픽의 메타데이터를 이용해 의심스러운 웹 도메인을 탐지하는
+네트워크 모니터링 프로토타입입니다. Rust 서비스가 패킷을 수집하고,
+ARI/XGBoost 기반 prefilter로 TCP 흐름을 분류한 뒤, IP를 도메인 후보로
+변환하여 SQLite에 경고를 저장하고 웹 대시보드로 보여줍니다.
 
-## 팀소개 및 페이지를 꾸며주세요.
+## 프로젝트 소개
 
-- 프로젝트 소개
-  - 프로젝트 설치방법 및 데모, 사용방법, 프리뷰등을 readme.md에 작성.
-  - Api나 사용방법등 내용이 많을경우 wiki에 꾸미고 링크 추가.
+이 프로젝트는 payload를 직접 검사하지 않고 패킷 길이와 ACK delta 특징을
+사용해 트래픽 흐름을 분석합니다. 이후 DNS/PTR 조회와 HTML fingerprint 비교를
+통해 도메인 위험도를 보강합니다.
 
-- 팀페이지 꾸미기
-  - 프로젝트 소개 및 팀원 소개
-  - index.md 예시보고 수정.
+주요 구성:
 
-- GitHub Pages 리파지토리 Settings > Options > GitHub Pages 
-  - Source를 marster branch
-  - Theme Chooser에서 태마선택
-  - 수정후 팀페이지 확인하여 점검.
+- `src/capture.rs` - 패킷 캡처 및 파싱
+- `src/prefilter/` - ARI 특징 추출 및 XGBoost JSON 추론
+- `src/resolver/` - passive DNS, PTR, HackerTarget, 캐시 조회
+- `src/alert/` - 경고 생성 및 위험도 업데이트
+- `src/web/`, `templates/` - 웹 대시보드와 경고 페이지
+- `scripts/` - 데이터 추출, 학습, 모델 export 파이프라인
 
-**팀페이지 주소** -> https://kookmin-sw.github.io/ '{{자신의 리파지토리 아이디}}'
+## 소개 영상
 
-**예시)** 2023년 0조  https://kookmin-sw.github.io/capstone-2023-00/
+소개 영상 링크: TBD
 
+## 팀 소개
 
-## 내용에 아래와 같은 내용들을 추가하세요.
+Capstone Team 40
 
-### 1. 프로잭트 소개
+최종 제출 전 팀원 정보, 담당 역할, 사진 또는 SNS 링크를 추가할 예정입니다.
 
-프로젝트
+## 사용법
 
-### 2. 소개 영상
+필요 환경:
 
-프로젝트 소개하는 영상을 추가하세요
+- Rust toolchain 및 Cargo
+- 패킷 캡처를 위한 libpcap 개발 패키지
+- 학습 스크립트 실행을 위한 Python 및 `uv`
 
-### 3. 팀 소개
+빌드 및 테스트:
 
-팀을 소개하세요.
-
-팀원정보 및 담당이나 사진 및 SNS를 이용하여 소개하세요.
-
-### 4. 사용법
-
-소스코드제출시 설치법이나 사용법을 작성하세요.
-
-### 5. 기타
-
-추가적인 내용은 자유롭게 작성하세요.
-
-
-## Markdown을 사용하여 내용꾸미기
-
-Markdown은 작문을 스타일링하기위한 가볍고 사용하기 쉬운 구문입니다. 여기에는 다음을위한 규칙이 포함됩니다.
-
-```markdown
-Syntax highlighted code block
-
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
+```bash
+cargo build
+cargo test
 ```
 
-자세한 내용은 [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
+대시보드 및 캡처 파이프라인 실행:
 
-### Support or Contact
+```bash
+cargo run -- serve 127.0.0.1:8080
+```
 
-readme 파일 생성에 추가적인 도움이 필요하면 [도움말](https://help.github.com/articles/about-readmes/) 이나 [contact support](https://github.com/contact) 을 이용하세요.
+서비스는 먼저 저장소 루트의 `capstone.toml`을 읽고, 없으면
+`~/.config/capstone/capstone.toml`을 사용합니다. 실시간 캡처는
+`[capture] interface`, 오프라인 분석은 `pcap_file`을 설정합니다.
+
+IP를 도메인 후보로 변환:
+
+```bash
+cargo run -- ip-to-domain 8.8.8.8 --json
+```
+
+ARI prefilter 모델 학습 및 export:
+
+```bash
+uv run python3 scripts/main.py all
+```
+
+자세한 구현 내용은 `plan.md`, `status.md`, `prefilter.md`를 참고하세요.
+
+## 기타
+
+- 실시간 패킷 캡처는 root 권한 또는 `CAP_NET_RAW`가 필요할 수 있습니다.
+- 기본 데이터베이스 경로는 `~/.local/share/capstone/capstone.db`입니다.
+- reverse-DNS 캐시는 설정된 DNS 캐시 경로에 저장됩니다.
+- 일부 CLI subcommand는 아직 placeholder이며, 현재 주요 실행 명령은
+  `serve`와 `ip-to-domain`입니다.
