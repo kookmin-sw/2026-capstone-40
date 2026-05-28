@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use crate::time::now_secs;
 
-use super::cache::Cache;
+use super::api_cache::Cache;
 use super::types::{cache_fresh, looks_like_domain, norm_domain, sorted_vec, ProviderResult};
 
 static HT_LAST: OnceLock<Mutex<Instant>> = OnceLock::new();

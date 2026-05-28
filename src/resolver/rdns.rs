@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::time::now_secs;
 
-use super::cache::Cache;
+use super::api_cache::Cache;
 use super::types::{cache_fresh, looks_like_domain, norm_domain, sorted_vec, ProviderResult};
 
 pub fn fetch(ip: &str, cache: &Cache, ttl_s: i64) -> ProviderResult {

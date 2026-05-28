@@ -1,14 +1,13 @@
+use std::collections::HashSet;
+
 use rusqlite::{params, Connection, Result};
 
-use super::types::StoredFingerprint;
+use super::types::{FingerprintWrite, StoredFingerprint};
 
 pub fn save_fingerprint(
     conn: &Connection,
     domain: &str,
-    title: Option<&str>,
-    h1: Option<&str>,
-    simhash: u64,
-    html_hash: &str,
+    fw: &FingerprintWrite,
     ts: i64,
 ) -> Result<()> {
     conn.execute(
@@ -21,16 +20,33 @@ pub fn save_fingerprint(
             r.get(0)
         })?;
     conn.execute(
-        "INSERT INTO snapshots (domain_id,ts,title,h1_text,simhash_text,html_hash)
-         VALUES (?1,?2,?3,?4,?5,?6)",
-        params![domain_id, ts, title, h1, simhash as i64, html_hash],
+        "INSERT INTO snapshots
+            (domain_id,ts,title,h1_text,simhash_text,html_hash,tag_bigrams,css_classes,word_tokens)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        params![
+            domain_id,
+            ts,
+            fw.title,
+            fw.h1,
+            fw.simhash as i64,
+            fw.html_hash,
+            fw.tag_bigrams,
+            fw.css_classes,
+            fw.word_tokens
+        ],
     )?;
     Ok(())
 }
 
+fn split_set(s: Option<String>) -> HashSet<String> {
+    s.map(|v| v.split('\n').filter(|x| !x.is_empty()).map(String::from).collect())
+        .unwrap_or_default()
+}
+
 pub fn get_fingerprints(conn: &Connection, domain: &str, limit: usize) -> Vec<StoredFingerprint> {
     let mut stmt = match conn.prepare(
-        "SELECT s.simhash_text, s.html_hash, s.title, s.ts
+        "SELECT s.simhash_text, s.html_hash, s.title, s.h1_text, s.ts,
+                s.tag_bigrams, s.css_classes, s.word_tokens
          FROM snapshots s
          JOIN domains d ON d.id = s.domain_id
          WHERE d.domain=?1 AND s.simhash_text IS NOT NULL
@@ -45,7 +61,11 @@ pub fn get_fingerprints(conn: &Connection, domain: &str, limit: usize) -> Vec<St
             simhash: r.get::<_, i64>(0)? as u64,
             html_hash: r.get(1).unwrap_or_default(),
             title: r.get(2)?,
-            ts: r.get(3)?,
+            h1: r.get(3)?,
+            ts: r.get(4)?,
+            tag_bigrams: split_set(r.get(5)?),
+            css_classes: split_set(r.get(6)?),
+            word_tokens: split_set(r.get(7)?),
         })
     })
     .ok()

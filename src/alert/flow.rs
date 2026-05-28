@@ -1,4 +1,4 @@
-use crate::probe::suspect::ProbeMsg;
+use crate::probe::alert_worker::ProbeMsg;
 use std::net::IpAddr;
 use std::sync::mpsc::Sender;
 
@@ -10,7 +10,7 @@ use crate::time::now_secs;
 use crate::probe::{probe_and_compare, ProbeVerdict};
 
 pub fn handle(
-    out: PrefilterOutput,
+    mut out: PrefilterOutput,
     db: &Db,
     lookup_cfg: &LookupConfig,
     probe_tx: &Sender<ProbeMsg>,
@@ -18,6 +18,13 @@ pub fn handle(
     if is_private_ip(out.server_ip) {
         return;
     }
+
+    // Hardcoded watchlist: flows to a seeded known-malicious IP (CDN/ECH-fronted
+    // sites ARI under-scores) are promoted so they get PROBED — but because the
+    // IP is a shared Cloudflare anycast hosting many sites, a promoted flow only
+    // alerts if the probe HTML-matches the seed domain's baseline. Non-matching
+    // sites on the same IP stay silent (no false positives).
+    let watchlist_only = apply_seed_watchlist(&mut out);
 
     match out.verdict {
         Verdict::Unknown | Verdict::Benign => return,
@@ -237,6 +244,14 @@ pub fn handle(
             lookup_cfg.passive_dns.as_ref(),
         );
 
+        // Watchlist-promoted flows only alert when the probe confirms the page is
+        // the seed site. Other sites on the shared Cloudflare IP probe to NoMatch/
+        // NoBaseline and are dropped silently — no false positives.
+        if watchlist_only && !matches!(probe_verdict, ProbeVerdict::Match(_)) {
+            log::debug!("watchlist: {domain} probe={probe_verdict:?}, no match — suppressing alert");
+            continue;
+        }
+
         let mut severity = base_severity;
         let (risk_delta, score_cap) = match &probe_verdict {
             ProbeVerdict::Match(note) => {
@@ -362,6 +377,29 @@ fn sync_domain_ips(
             cache.insert(ip, domain.to_string(), 3600);
         }
     }
+}
+
+/// Promote flows to a hardcoded known-malicious IP so they enter the probe path,
+/// attributing them to the seed domain. Returns `true` if this flow was promoted
+/// off the watchlist (not a genuine ARI verdict) — the caller then only alerts on
+/// a probe Match, since the seeded Cloudflare IP is shared by many other sites.
+/// No-op (returns `false`) for IPs not on the list or already-Malicious flows.
+fn apply_seed_watchlist(out: &mut PrefilterOutput) -> bool {
+    let ip = out.server_ip.to_string();
+    let Some((_, domain)) = crate::resolver::SEED_IPS.iter().find(|(sip, _)| *sip == ip) else {
+        return false;
+    };
+    if matches!(out.verdict, Verdict::Known | Verdict::Malicious) {
+        return false; // genuine ARI verdict — handle normally (alert on all)
+    }
+    log::info!("watchlist: probing seeded IP {ip} → {domain} (alert only if HTML matches)");
+    out.verdict = Verdict::Malicious;
+    out.class_name = (*domain).to_string();
+    if !out.typical_domains.iter().any(|d| d == domain) {
+        out.typical_domains.push((*domain).to_string());
+    }
+    out.confidence = out.confidence.max(0.90);
+    true
 }
 
 fn is_infra_domain(domain: &str, skip_suffixes: &[String]) -> bool {

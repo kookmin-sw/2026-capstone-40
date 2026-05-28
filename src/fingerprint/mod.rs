@@ -59,17 +59,28 @@ pub fn shape_content_score(a: &PageFingerprint, b: &PageFingerprint) -> f32 {
 }
 
 pub fn classify(a: &PageFingerprint, b: &PageFingerprint) -> Similarity {
-    if a.simhash == b.simhash {
-        return Similarity::Identical;
-    }
-
     let shape_score = shape_content_score(a, b);
     let simhash_distance = hamming(a.simhash, b.simhash);
 
-    if shape_score >= HIGH_SHAPE_THRESHOLD && simhash_distance <= HIGH_SIMHASH_DISTANCE {
-        return Similarity::High;
+    // Identical/High demand strong STRUCTURAL overlap. simhash proximity alone is
+    // unreliable: sparse pages (nginx/Cloudflare defaults) produce few trigrams,
+    // so unrelated near-empty pages collide at distance 0. Requiring a high shape
+    // score first kills those false EXACT matches.
+    if shape_score >= HIGH_SHAPE_THRESHOLD {
+        if simhash_distance == 0 {
+            return Similarity::Identical;
+        }
+        if simhash_distance <= HIGH_SIMHASH_DISTANCE {
+            return Similarity::High;
+        }
     }
-    if shape_score >= MODERATE_SHAPE_THRESHOLD || simhash_distance <= MODERATE_SIMHASH_DISTANCE {
+
+    // Moderate needs at least moderate shape; simhash proximity only corroborates
+    // (never stands alone) so it can't promote a structurally-dissimilar pair.
+    if shape_score >= MODERATE_SHAPE_THRESHOLD
+        || (simhash_distance <= MODERATE_SIMHASH_DISTANCE
+            && shape_score >= CORROBORATED_SHAPE_THRESHOLD)
+    {
         return Similarity::Moderate;
     }
 
@@ -293,6 +304,25 @@ mod tests {
     fn classify_identical() {
         let fp = fingerprint("<p>same content same content same content</p>");
         assert_eq!(classify(&fp, &fp), Similarity::Identical);
+    }
+
+    #[test]
+    fn sparse_simhash_collision_not_exact() {
+        // Same visible text => identical simhash, but different DOM structure.
+        // Old code shortcut to Identical on simhash equality alone; the shape
+        // gate must reject these (this is the nginx-default false-EXACT bug).
+        let a = fingerprint("<html><body><div><div><p>welcome</p></div></div></body></html>");
+        let b = fingerprint("<html><body><span>welcome</span></body></html>");
+        assert_eq!(
+            hamming(a.simhash, b.simhash),
+            0,
+            "precondition: simhashes must collide"
+        );
+        let verdict = classify(&a, &b);
+        assert!(
+            !matches!(verdict, Similarity::Identical | Similarity::High),
+            "structurally different pages must not be EXACT/HIGH, got {verdict:?}"
+        );
     }
 
     #[test]

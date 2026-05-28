@@ -1,6 +1,8 @@
-pub mod baseline;
-pub mod suspect;
+pub mod alert_worker;
+pub mod baseline_worker;
 
-mod compare;
+mod engine;
+mod fetch;
 
-pub use compare::{probe_and_compare, probe_baseline, ProbeVerdict};
+pub use engine::{probe_and_compare, ProbeVerdict};
+pub use fetch::probe_baseline;

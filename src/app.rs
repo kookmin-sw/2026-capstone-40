@@ -19,6 +19,7 @@ pub fn serve(bind: String, cfg: config::Config) {
     let capture_running = Arc::new(AtomicBool::new(false));
 
     let passive_dns = resolver::PassiveDnsCache::new();
+    seed_static_domains(&db, &passive_dns);
     let prefilter = load_prefilter(&cfg);
     let labels_for_web = prefilter.labels.clone();
 
@@ -36,6 +37,22 @@ pub fn serve(bind: String, cfg: config::Config) {
     web::Server::new(bind, cfg, db, capture_running, labels_for_web)
         .run()
         .unwrap();
+}
+
+/// Inject hardcoded IP→domain seeds (CDN/ECH-fronted sites) into the passive DNS
+/// cache and the persistent domain_ips table so flow attribution can find them.
+fn seed_static_domains(db: &store::Db, passive_dns: &resolver::PassiveDnsCache) {
+    use std::net::IpAddr;
+    let now = crate::time::now_secs();
+    for (ip, domain) in resolver::SEED_IPS {
+        if let Ok(addr) = ip.parse::<IpAddr>() {
+            passive_dns.insert(addr, domain.to_string(), 3600);
+        }
+        if let Ok(conn) = db.lock() {
+            store::upsert_domain(&conn, domain, ip, now).ok();
+        }
+        log::info!("seed: {ip} → {domain}");
+    }
 }
 
 fn open_store(cfg: &config::Config) -> store::Db {

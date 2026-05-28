@@ -1,4 +1,4 @@
-//! Background prober for suspicious domains.
+//! Background prober for alert-triggered suspicious domains.
 //!
 //! Two trigger paths:
 //!   1. Immediate: flow.rs sends a domain via channel when inline probe fails.
@@ -18,7 +18,7 @@ use super::probe_baseline;
 const PERIODIC_INTERVAL: Duration = Duration::from_secs(300);
 const FAIL_COOLDOWN: Duration = Duration::from_secs(300);
 
-/// Message sent to the suspect prober. Priority=true puts domain at front of queue.
+/// Message sent to the alert worker. Priority=true puts domain at front of queue.
 pub struct ProbeMsg {
     pub domain: String,
     pub priority: bool,
@@ -37,7 +37,7 @@ impl From<String> for ProbeMsg {
 pub fn spawn(db: Db, probe_threshold: u32, cache_secs: i64) -> Sender<ProbeMsg> {
     let (tx, rx) = mpsc::channel::<ProbeMsg>();
     std::thread::Builder::new()
-        .name("suspect-prober".into())
+        .name("alert-prober".into())
         .spawn(move || run(rx, db, probe_threshold, cache_secs))
         .ok();
     tx
@@ -95,7 +95,6 @@ fn run(rx: Receiver<ProbeMsg>, db: Db, probe_threshold: u32, cache_secs: i64) {
             continue;
         }
 
-        // Priority queue first, then normal queue.
         let domain = if let Some(d) = hi_queue.pop_front() {
             pending_set.remove(&d);
             d
@@ -106,22 +105,20 @@ fn run(rx: Receiver<ProbeMsg>, db: Db, probe_threshold: u32, cache_secs: i64) {
             continue;
         };
 
-        // Skip if still in fail cooldown (domain is dropped — will be re-queued
-        // by the next flow that triggers CDN probe queue for this IP).
+        // Skip if still in fail cooldown.
         if let Some(&t) = fail_cooldown.get(domain.as_str()) {
             if t.elapsed() < FAIL_COOLDOWN {
-                log::debug!("suspect-prober: skip {domain} (fail cooldown)");
+                log::debug!("alert-prober: skip {domain} (fail cooldown)");
                 continue;
             }
             fail_cooldown.remove(domain.as_str());
         }
-        // Skip if cache is still fresh.
         if !cache_stale(&domain, &db, cache_secs) {
-            log::debug!("suspect-prober: skip {domain} (cache fresh)");
+            log::debug!("alert-prober: skip {domain} (cache fresh)");
             continue;
         }
 
-        log::info!("suspect-prober: probing {domain}");
+        log::info!("alert-prober: probing {domain}");
         let before = {
             let conn = db.lock().ok();
             conn.and_then(|c| store::snapshot_count(&c, &domain).into())
@@ -135,7 +132,7 @@ fn run(rx: Receiver<ProbeMsg>, db: Db, probe_threshold: u32, cache_secs: i64) {
         };
         if after <= before {
             log::warn!(
-                "suspect-prober: {domain} probe failed, cooling down {}s",
+                "alert-prober: {domain} probe failed, cooling down {}s",
                 FAIL_COOLDOWN.as_secs()
             );
             fail_cooldown.insert(domain, Instant::now());

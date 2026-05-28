@@ -8,24 +8,39 @@
 //! Results are merged across providers. Optional DoH verification filters to
 //! only domains whose forward resolution matches the queried IP.
 
-mod cache;
+mod api_cache;
+mod dns_parser;
+mod doh_verify;
 mod hackertarget;
 mod passive_dns;
-mod ptr;
+mod rdns;
 mod types;
-mod verify;
 
 use std::collections::{HashMap, HashSet};
 
 pub use passive_dns::PassiveDnsCache;
 pub use types::{DomainEntry, LookupResult};
 
-use cache::Cache;
+use api_cache::Cache;
 use types::{cache_ttl_secs, ProviderResult};
-use verify::verify_domains;
+use doh_verify::verify_domains;
 
 pub const DEFAULT_DNS_CACHE: &str = "~/.cache/capstone/dns_cache.sqlite3";
 pub const DEFAULT_CACHE_TTL_DAYS: u64 = 7;
+
+/// Hardcoded IP→domain seeds for CDN/ECH-fronted sites whose SNI we can't sniff.
+/// Cloudflare/AWS anycast hides the real host (TLS-1.3 ECH + DoT bypass capture),
+/// so passive DNS never sees the mapping. Seeding lets flow attribution and the
+/// HTML-match probe still confirm the site. The probe's HTML comparison re-gates,
+/// so a stale/wrong seed cannot raise an alert on its own.
+/// NOTE: Cloudflare anycast IPs rotate — refresh if attribution stops working.
+pub const SEED_IPS: &[(&str, &str)] = &[
+    // ohli365.org — Cloudflare-fronted Korean piracy streaming site.
+    ("104.21.8.244", "ohli365.org"),
+    ("172.67.130.198", "ohli365.org"),
+    ("2606:4700:3036::6815:8f4", "ohli365.org"),
+    ("2606:4700:3036::ac43:82c6", "ohli365.org"),
+];
 
 // ── config ────────────────────────────────────────────────────────────────────
 
@@ -85,7 +100,7 @@ pub fn lookup(ip: &str, config: &LookupConfig) -> Result<LookupResult, Box<dyn s
                 Some(c) => c.as_provider(ip),
                 None => continue,
             },
-            "ptr" => ptr::fetch(ip, &cache, ttl_s),
+            "ptr" => rdns::fetch(ip, &cache, ttl_s),
             "hackertarget" => hackertarget::fetch(ip, &cache, config.timeout_s, ttl_s),
             other => {
                 notes.push(format!("unknown source '{other}'"));

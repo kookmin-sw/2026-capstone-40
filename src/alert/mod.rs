@@ -6,7 +6,7 @@ use std::sync::{mpsc::Receiver, Arc, Mutex};
 use crate::capture::CaptureEvent;
 use crate::config::Config;
 use crate::prefilter::LabelMap;
-use crate::probe::{baseline, suspect};
+use crate::probe::{alert_worker, baseline_worker};
 use crate::resolver::{LookupConfig, PassiveDnsCache, DEFAULT_DNS_CACHE};
 use crate::store::Db;
 
@@ -36,11 +36,11 @@ pub fn spawn_workers(
     });
 
     if let Some(lm) = labels {
-        baseline::spawn(lm, db.clone(), 7, lookup_cfg.passive_dns.clone());
+        baseline_worker::spawn(lm, db.clone(), 7, lookup_cfg.passive_dns.clone());
     }
 
     let probe_cache_secs = (config.probe.cache_days * 86400) as i64;
-    let probe_tx = Arc::new(suspect::spawn(
+    let probe_tx = Arc::new(alert_worker::spawn(
         db.clone(),
         config.filter.probe_threshold,
         probe_cache_secs,

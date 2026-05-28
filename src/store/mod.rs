@@ -27,7 +27,10 @@ pub use stats::{
     inc_filter_decision, inc_traffic_alerts, inc_traffic_domains, inc_traffic_ips, pipeline_status,
     prefilter_stats, traffic_data,
 };
-pub use types::{Alert, Domain, Pipeline, PrefilterStats, Stats, StoredFingerprint, TrafficData};
+pub use types::{
+    Alert, Domain, FingerprintWrite, Pipeline, PrefilterStats, Stats, StoredFingerprint,
+    TrafficData,
+};
 
 pub type Db = Arc<Mutex<Connection>>;
 
@@ -106,7 +109,10 @@ fn init_schema(conn: &Connection) -> Result<()> {
             has_login_form INTEGER NOT NULL DEFAULT 0,
             redirect_depth INTEGER NOT NULL DEFAULT 0,
             html_hash      TEXT,
-            simhash_text   INTEGER
+            simhash_text   INTEGER,
+            tag_bigrams    TEXT,
+            css_classes    TEXT,
+            word_tokens    TEXT
         );
         CREATE TABLE IF NOT EXISTS pipeline_stats (
             id            INTEGER PRIMARY KEY CHECK (id = 1),
@@ -135,6 +141,12 @@ fn init_schema(conn: &Connection) -> Result<()> {
     conn.execute("ALTER TABLE snapshots ADD COLUMN simhash_text INTEGER", [])
         .ok();
     conn.execute("ALTER TABLE snapshots ADD COLUMN h1_text TEXT", [])
+        .ok();
+    conn.execute("ALTER TABLE snapshots ADD COLUMN tag_bigrams TEXT", [])
+        .ok();
+    conn.execute("ALTER TABLE snapshots ADD COLUMN css_classes TEXT", [])
+        .ok();
+    conn.execute("ALTER TABLE snapshots ADD COLUMN word_tokens TEXT", [])
         .ok();
 
     // DNS cache schema (in attached dns_cache.db).

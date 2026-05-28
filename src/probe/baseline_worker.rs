@@ -17,7 +17,7 @@ use crate::time::now_secs;
 use super::probe_baseline;
 
 const RETRY_INTERVAL: Duration = Duration::from_secs(3600); // 1h retry for no-baseline
-const REFRESH_INTERVAL: Duration = Duration::from_secs(6 * 3600); // 6h check for stale
+const REFRESH_INTERVAL: Duration = Duration::from_secs(6 * 3600); // 6h stale check
 
 pub fn spawn(
     labels: LabelMap,
