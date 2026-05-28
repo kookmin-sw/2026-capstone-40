@@ -1,24 +1,56 @@
 # Capstone 40
 
-암호화된 트래픽의 메타데이터를 이용해 의심스러운 웹 도메인을 탐지하는
-네트워크 모니터링 프로토타입입니다. Rust 서비스가 패킷을 수집하고,
-ARI/XGBoost 기반 prefilter로 TCP 흐름을 분류한 뒤, IP를 도메인 후보로
-변환하여 SQLite에 경고를 저장하고 웹 대시보드로 보여줍니다.
+## CB-HWI: Content-based Harmful Website Identification
+
+암호화된 웹 트래픽 환경에서 유해 웹사이트 접속을 식별하기 위한 네트워크 모니터링 및 콘텐츠 기반 분석 시스템입니다.
+
+본 시스템은 암호화된 트래픽의 패킷 메타데이터를 이용해 의심 IP를 선별하고, 선별된 IP에 대해 reverse IP lookup과 HTML 구조 및 콘텐츠 유사도 분석을 수행하여 접속 대상이 유해 웹사이트인지 식별합니다.
+
+본 프로젝트에서는 이 중 reverse IP lookup과 HTML 구조·콘텐츠 유사도 분석을 활용한 active probing 기능 구현에 중점을 두었습니다.
 
 ## 프로젝트 소개
 
-이 프로젝트는 payload를 직접 검사하지 않고 패킷 길이와 ACK delta 특징을
-사용해 트래픽 흐름을 분석합니다. 이후 DNS/PTR 조회와 HTML fingerprint 비교를
-통해 도메인 위험도를 보강합니다.
+본 시스템의 전체 구조는 다음과 같습니다.
+
+![CB-HWI System Architecture](asset/system_architecture.png)
+
+본 시스템은 두 단계로 구성됩니다. 
+
+1단계에서는 암호화된 트래픽의 패킷 길이 시퀀스와 ACK delta 등의 메타데이터를 추출하고, XGBoost 기반으로 의심 IP를 선별합니다. 
+2단계에서는 선별된 IP에 대해 reverse IP lookup을 수행하여 도메인 후보를 수집하고, 각 웹페이지의 HTML 구조와 콘텐츠 유사도를 분석하여 유해 웹사이트 여부를 판단합니다.
+
+본 프로젝트는 이 중 2단계 active probing 기능 구현에 중점을 두었습니다.
+1단계 passive monitoring은 기존 연구실 기술을 활용하였으며, 본 프로젝트에서는 의심 IP에 대한 도메인 후보 수집 및 접속과 HTML 구조 및 콘텐츠 유사도 기반 식별 기능을 구현했습니다.
 
 주요 구성:
 
 - `src/capture.rs` - 패킷 캡처 및 파싱
-- `src/prefilter/` - ARI 특징 추출 및 XGBoost JSON 추론
-- `src/resolver/` - passive DNS, PTR, HackerTarget, 캐시 조회
-- `src/alert/` - 경고 생성 및 위험도 업데이트
-- `src/web/`, `templates/` - 웹 대시보드와 경고 페이지
-- `scripts/` - 데이터 추출, 학습, 모델 export 파이프라인
+- `src/prefilter/` - 패킷 메타데이터 기반 특징 추출 및 XGBoost prefilter 추론
+- `src/probe/` - 의심 IP 기반 active probing 수행
+- `src/resolver/` - passive DNS, PTR, HackerTarget, 캐시 기반 도메인 후보 조회
+- `src/fingerprint/` - HTML 구조 및 콘텐츠 기반 fingerprint 분석
+- `src/alert/`, `src/store/` - 경고 생성, 위험도 업데이트 및 SQLite 저장
+- `src/web/`, `templates/`, `static/` - 웹 대시보드, 템플릿 및 정적 파일
+- `utils/` - IP-to-domain 조회, HTML 유사도 분석, 웹페이지 수집 유틸리티
+
+## Active Probing 과정
+
+Active probing 단계는 passive monitoring에서 선별된 의심 IP를 대상으로 도메인 후보를 수집하는 것에서 시작합니다. 이후 수집된 도메인에 접속하여 웹페이지 콘텐츠를 크롤링하고, 각 웹페이지의 HTML 구조와 콘텐츠를 분석하여 유해 웹사이트 여부를 판단하는 과정입니다.
+
+1. **도메인 후보 수집**  
+   의심 IP에 대해 reverse IP lookup을 수행하여 해당 IP와 연관된 도메인 후보를 수집합니다.
+
+2. **웹페이지 크롤링**  
+   Playwright 기반 크롤러를 이용해 수집된 도메인에 접속하고, 렌더링된 HTML 콘텐츠를 수집합니다.
+
+3. **HTML 구조 분석**  
+   수집된 HTML을 DOM tree로 변환하고, 구조적으로 유사한 subtree를 선택합니다.
+
+4. **콘텐츠 유사도 분석**  
+   선택된 subtree 내부의 텍스트 콘텐츠를 비교하여 콘텐츠 유사도를 계산합니다.
+
+5. **유해 웹사이트 여부 판단**  
+   콘텐츠 유사도를 바탕으로 유해 웹사이트 여부를 판단합니다.
 
 ## 소개 영상
 
@@ -28,7 +60,13 @@ ARI/XGBoost 기반 prefilter로 TCP 흐름을 분류한 뒤, IP를 도메인 후
 
 Capstone Team 40
 
-최종 제출 전 팀원 정보, 담당 역할, 사진 또는 SNS 링크를 추가할 예정입니다.
+| 이름 | 역할 |
+| --- | --- |
+| 박윤재 | 역할 |
+| 박진우 | 역할 |
+| 송예찬 | 역할 |
+
+최종 제출 전 담당 역할을 추가할 예정입니다.
 
 ## 사용법
 
